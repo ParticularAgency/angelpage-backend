@@ -1,0 +1,14 @@
+{
+	"compilerOptions": {
+		"target": "ES6", // Set to your desired ECMAScript target
+		"module": "CommonJS", // Keep as CommonJS for Node.js
+		"esModuleInterop": true, // Enable this option
+		"skipLibCheck": true, // Skip type checking of declaration files
+		"forceConsistentCasingInFileNames": true, // Ensure consistent casing in file names
+		"strict": true, // Enable all strict type checking options
+		"outDir": "./dist", // Output directory for compiled files
+		"rootDir": "./src" // Input directory for source files
+	},
+	"include": ["src/**/*.ts"],
+	"exclude": ["node_modules"]
+}
