@@ -1,148 +1,235 @@
 import { Request, Response } from "express";
-import { UserService } from "./users.service";
+import cloudinary from "../../config/cloudinary";
+import User from "../../models/User.model";
+import bcrypt from "bcryptjs";
 
-const userService = new UserService();
-
-// User Registration
-export const registerUser = async (req: Request, res: Response) => {
+export const updateProfile = async (req: Request, res: Response) => {
 	try {
-		const { name, email, password } = req.body; // Destructure to get name, email, password
-		if (!name || !email || !password) {
-			return res
-				.status(400)
-				.json({ message: "Name, email, and password are required." }); // Respond with error
+		const { userId } = req.user; // Assumes userId is set by middleware
+		const {
+			firstName,
+			lastName,
+			dateBirth,
+			email,
+			userName,
+			description,
+			currentPassword,
+			newPassword,
+		} = req.body;
+
+		// Retrieve user document
+		const user = await User.findById(userId);
+		if (!user) return res.status(404).json({ message: "User not found" });
+
+		const updateData: Partial<typeof user> = {};
+
+		// Handle password update if both current and new passwords are provided
+		if (currentPassword && newPassword) {
+			const isPasswordCorrect = await bcrypt.compare(
+				currentPassword,
+				user.password,
+			);
+			if (!isPasswordCorrect)
+				return res
+					.status(400)
+					.json({ message: "Current password is incorrect" });
+			updateData.password = await bcrypt.hash(newPassword, 10);
 		}
-		const newUser = await userService.registerUser(req.body); // Pass the entire body
-		res.status(201).json(newUser); // Respond with the new user data
+
+		// Conditionally add other fields to the update data if they are provided
+		if (firstName) updateData.firstName = firstName;
+		if (lastName) updateData.lastName = lastName;
+		if (dateBirth) updateData.dateBirth = dateBirth;
+		if (email) updateData.email = email;
+		if (userName) updateData.userName = userName;
+		if (description) updateData.description = description;
+
+		// Upload profile image to Cloudinary if provided
+		if (req.file) {
+			const result = await cloudinary.uploader.upload(req.file.path, {
+				folder: "user_profiles",
+				public_id: `user_${userId}`,
+				overwrite: true,
+			});
+			updateData.profileImage = result.secure_url;
+		}
+
+		const updatedUser = await User.findByIdAndUpdate(userId, updateData, {
+			new: true,
+		});
+
+		res
+			.status(200)
+			.json({ message: "Profile updated successfully", user: updatedUser });
 	} catch (error) {
-		res.status(500).json({ message: error.message });
+		console.error("Error updating profile:", error);
+		res.status(500).json({ message: "Failed to update profile", error });
 	}
 };
 
-// User Login
-export const loginUser = async (req: Request, res: Response) => {
-    try {
-        const { email, password } = req.body; // Get email and password from request body
+export const getUserProfile = async (req: Request, res: Response) => {
+	try {
+		const userId = req.user?.userId;
+		if (!userId)
+			return res.status(400).json({ message: "User ID is required" });
 
-        // Check if email and password are provided
-        if (!email || !password) {
-            return res.status(400).json({ message: "Email and password are required." });
-        }
+		const user = await User.findById(userId).select("-password");
+		if (!user) return res.status(404).json({ message: "User not found" });
 
-        // Authenticate user
-        const user = await userService.loginUser(email, password);
-        if (!user) {
-            return res.status(401).json({ message: "Invalid email or password." }); // Unauthorized
-        }
-
-        // Successful login
-        res.status(200).json({ message: "Login successful.", user });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
+		res.status(200).json({ user });
+	} catch (error) {
+		console.error("Error fetching user profile:", error);
+		res
+			.status(500)
+			.json({ message: "Failed to fetch user profile", error: error.message });
+	}
 };
 
-// // Update User Profile
-// export const updateUserProfile = async (req: Request, res: Response) => {
-// 	try {
-// 		const userId = req.user.id; // Assume user ID is available from middleware
-// 		const updatedUser = await userService.updateUserProfile(userId, req.body);
-// 		res.status(200).json(updatedUser);
-// 	} catch (error) {
-// 		res.status(500).json({ message: error.message });
-// 	}
-// };
+// Add address function
+export const addAddress = async (req: Request, res: Response) => {
+	try {
+		const { userId } = req.user;
+		const newAddress = req.body; // Expects address data in the request body
 
-// // Get User Profile
-// export const getUserProfile = async (req: Request, res: Response) => {
-// 	try {
-// 		const userId = req.user.id; // Get user ID from middleware
-// 		const userProfile = await userService.getUserProfile(userId);
-// 		res.status(200).json(userProfile);
-// 	} catch (error) {
-// 		res.status(500).json({ message: error.message });
-// 	}
-// };
+		const user = await User.findById(userId);
+		if (!user) return res.status(404).json({ message: "User not found" });
 
-// // Get User Products
-// export const getUserProducts = async (req: Request, res: Response) => {
-// 	try {
-// 		const userId = req.user.id; // Get user ID from middleware
-// 		const products = await userService.getUserProducts(userId);
-// 		res.status(200).json(products);
-// 	} catch (error) {
-// 		res.status(500).json({ message: error.message });
-// 	}
-// };
+		user.addresses.push(newAddress);
+		await user.save();
 
-// // Get Favorite Products
-// export const getFavoriteProducts = async (req: Request, res: Response) => {
-// 	try {
-// 		const userId = req.user.id; // Get user ID from middleware
-// 		const favorites = await userService.getFavoriteProducts(userId);
-// 		res.status(200).json(favorites);
-// 	} catch (error) {
-// 		res.status(500).json({ message: error.message });
-// 	}
-// };
+		res.status(201).json({
+			message: "Address added successfully",
+			addresses: user.addresses,
+		});
+	} catch (error) {
+		console.error("Error adding address:", error);
+		res.status(500).json({ message: "Failed to add address", error });
+	}
+};
 
-// // Get User Orders
-// export const getUserOrders = async (req: Request, res: Response) => {
-// 	try {
-// 		const userId = req.user.id; // Get user ID from middleware
-// 		const orders = await userService.getUserOrders(userId);
-// 		res.status(200).json(orders);
-// 	} catch (error) {
-// 		res.status(500).json({ message: error.message });
-// 	}
-// };
+// Update address function
+export const updateAddress = async (req: Request, res: Response) => {
+	try {
+		const { userId } = req.user;
+		const { addressId } = req.params;
+		const updatedAddress = req.body;
 
-// // Get Order Details
-// export const getOrderDetails = async (req: Request, res: Response) => {
-// 	try {
-// 		const userId = req.user.id; // Get user ID from middleware
-// 		const orderId = req.params.orderId;
-// 		const orderDetails = await userService.getOrderDetails(userId, orderId);
-// 		res.status(200).json(orderDetails);
-// 	} catch (error) {
-// 		res.status(404).json({ message: error.message }); // Not found
-// 	}
-// };
+		const user = await User.findById(userId);
+		if (!user) return res.status(404).json({ message: "User not found" });
 
-// // Get Charity List
-// export const getCharityList = async (req: Request, res: Response) => {
-// 	try {
-// 		const charities = await userService.getCharityList();
-// 		res.status(200).json(charities);
-// 	} catch (error) {
-// 		res.status(500).json({ message: error.message });
-// 	}
-// };
+		const address = user.addresses.id(addressId);
+		if (!address) return res.status(404).json({ message: "Address not found" });
 
-// // Get Charity Details
-// export const getCharityDetails = async (req: Request, res: Response) => {
-// 	try {
-// 		const charityId = req.params.charityId;
-// 		const charityDetails = await userService.getCharityDetails(charityId);
-// 		res.status(200).json(charityDetails);
-// 	} catch (error) {
-// 		res.status(404).json({ message: error.message }); // Not found
-// 	}
-// };
+		Object.assign(address, updatedAddress);
+		await user.save();
 
-// // Donate to a Charity
-// export const donateToCharity = async (req: Request, res: Response) => {
-// 	try {
-// 		const charityId = req.params.charityId;
-// 		const userId = req.user.id; // Get user ID from middleware
-// 		const donationData = req.body; // Donation amount and other data
-// 		const donation = await userService.donateToCharity(
-// 			userId,
-// 			charityId,
-// 			donationData,
-// 		);
-// 		res.status(201).json(donation); // Respond with donation details
-// 	} catch (error) {
-// 		res.status(500).json({ message: error.message });
-// 	}
-// };
+		res.status(200).json({
+			message: "Address updated successfully",
+			addresses: user.addresses,
+		});
+	} catch (error) {
+		console.error("Error updating address:", error);
+		res.status(500).json({ message: "Failed to update address", error });
+	}
+};
+
+// Delete address function
+export const deleteAddress = async (req: Request, res: Response) => {
+	try {
+		const { userId } = req.user;
+		const { addressId } = req.params;
+
+		const user = await User.findById(userId);
+		if (!user) return res.status(404).json({ message: "User not found" });
+
+		user.addresses = user.addresses.filter(
+			address => address._id.toString() !== addressId,
+		);
+		await user.save();
+
+		res.status(200).json({
+			message: "Address deleted successfully",
+			addresses: user.addresses,
+		});
+	} catch (error) {
+		console.error("Error deleting address:", error);
+		res.status(500).json({ message: "Failed to delete address", error });
+	}
+};
+
+
+// payment methodes schamas start here
+
+export const addPayment = async (req: Request, res: Response) => {
+	try {
+		const { userId } = req.user;
+		const newPayment = req.body; // Assumes payment data is in the request body
+
+		const user = await User.findById(userId);
+		if (!user) return res.status(404).json({ message: "User not found" });
+
+		// Add the new payment to the user's payments array
+		user.payments.push(newPayment);
+		await user.save();
+
+		res.status(201).json({
+			message: "Payment method added successfully",
+			payments: user.payments,
+		});
+	} catch (error) {
+		console.error("Error adding payment:", error);
+		res.status(500).json({ message: "Failed to add payment method", error });
+	}
+};
+
+export const updatePayment = async (req: Request, res: Response) => {
+	try {
+		const { userId } = req.user;
+		const { paymentId } = req.params;
+		const updatedPayment = req.body;
+
+		const user = await User.findById(userId);
+		if (!user) return res.status(404).json({ message: "User not found" });
+
+		const payment = user.payments.id(paymentId);
+		if (!payment)
+			return res.status(404).json({ message: "Payment method not found" });
+
+		// Update the payment details
+		Object.assign(payment, updatedPayment);
+		await user.save();
+
+		res.status(200).json({
+			message: "Payment method updated successfully",
+			payments: user.payments,
+		});
+	} catch (error) {
+		console.error("Error updating payment:", error);
+		res.status(500).json({ message: "Failed to update payment method", error });
+	}
+};
+
+export const deletePayment = async (req: Request, res: Response) => {
+	try {
+		const { userId } = req.user;
+		const { paymentId } = req.params;
+
+		const user = await User.findById(userId);
+		if (!user) return res.status(404).json({ message: "User not found" });
+
+		// Filter out the payment method to delete
+		user.payments = user.payments.filter(
+			payment => payment._id.toString() !== paymentId,
+		);
+		await user.save();
+
+		res.status(200).json({
+			message: "Payment method deleted successfully",
+			payments: user.payments,
+		});
+	} catch (error) {
+		console.error("Error deleting payment:", error);
+		res.status(500).json({ message: "Failed to delete payment method", error });
+	}
+};
+

@@ -8,7 +8,13 @@ import errorHandler from "./middlewares/error.middleware"; // Import error handl
 const app = express();
 
 // Middleware
-app.use(cors()); // Enable CORS for all routes
+app.use(
+	cors({
+		origin: "http://localhost:3000", // Adjust to the frontend's URL in production
+		methods: ["GET", "POST", "PUT", "DELETE"], // Allow specific HTTP methods
+		credentials: true, // Enable cookies if using session-based authentication
+	}),
+);
 app.use(bodyParser.json()); // Parse JSON bodies
 app.use(bodyParser.urlencoded({ extended: true })); // Parse URL-encoded bodies
 
