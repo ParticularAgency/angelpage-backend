@@ -10,7 +10,7 @@ const app = express();
 // Middleware
 app.use(
 	cors({
-		origin: "http://localhost:3000", // Adjust to the frontend's URL in production
+		origin: process.env.FRONTEND_BASE_URL || "http://localhost:3000", // Use environment variable for frontend's URL
 		methods: ["GET", "POST", "PUT", "DELETE"], // Allow specific HTTP methods
 		credentials: true, // Enable cookies if using session-based authentication
 	}),
@@ -32,8 +32,5 @@ app.use("/api", routes); // Prefix all routes with /api
 // Error handling middleware
 app.use(errorHandler); // Add the error handling middleware
 
-// Start the server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-	console.log(`Server is running on http://localhost:${PORT}`);
-});
+// Export the app (Vercel requires this)
+export default app;
