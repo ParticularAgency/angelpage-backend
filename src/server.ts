@@ -1,4 +1,5 @@
 import express from "express";
+import dotenv from "dotenv";
 import cors from "cors";
 import bodyParser from "body-parser";
 import connectDB from "./config/database";
@@ -6,11 +7,11 @@ import routes from "./routes/index"; // Import routes
 import errorHandler from "./middlewares/error.middleware"; // Import error handling middleware
 
 const app = express();
-
+dotenv.config();
 // Middleware
 app.use(
 	cors({
-		origin: process.env.FRONTEND_BASE_URL || "http://localhost:3000", // Use environment variable for frontend's URL
+		origin: "http://localhost:3000", // Adjust to the frontend's URL in production
 		methods: ["GET", "POST", "PUT", "DELETE"], // Allow specific HTTP methods
 		credentials: true, // Enable cookies if using session-based authentication
 	}),
@@ -32,5 +33,8 @@ app.use("/api", routes); // Prefix all routes with /api
 // Error handling middleware
 app.use(errorHandler); // Add the error handling middleware
 
-// Export the app (Vercel requires this)
-export default app;
+// Start the server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+	console.log(`Server is running on http://localhost:${PORT}`);
+});
