@@ -1,8 +1,15 @@
 import { Request, Response } from "express";
 import Favorite from "../../models/Favorite.model";
+interface CustomRequest extends Request {
+	user?: {
+		_id: string;
+		userId: string; // Add this if you have userId explicitly in your middleware
+	};
+}
+
 
 // Toggle favorite (add/remove)
-export const toggleFavorite = async (req: Request, res: Response) => {
+export const toggleFavorite = async (req: CustomRequest, res: Response) => {
 	const userId = req.user?._id || req.body.userId; // Ensure userId is derived
 	const { itemId, type } = req.body;
 
@@ -50,7 +57,7 @@ export const toggleFavorite = async (req: Request, res: Response) => {
 	}
 };
 // Get user's favorite items
-export const getFavorites = async (req: Request, res: Response) => {
+export const getFavorites = async (req: CustomRequest, res: Response) => {
 	const userId = req.user?.userId; // Ensure req.user is populated
 
 	if (!userId) {
@@ -84,7 +91,7 @@ export const getFavorites = async (req: Request, res: Response) => {
 	}
 };
 
-export const getFavoriteCount = async (req: Request, res: Response) => {
+export const getFavoriteCount = async (req: CustomRequest, res: Response) => {
 	const userId = req.user?._id;
 
 	if (!userId) {

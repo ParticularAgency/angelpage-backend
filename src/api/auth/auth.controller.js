@@ -1,4 +1,4 @@
-import { Request, Response } from "express";
+// import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import User from "../../models/User.model";
@@ -16,27 +16,26 @@ import {
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
 // Utility to generate a token
-const generateToken = (userId: string, role: string): string => {
+const generateToken = (userId, role) => {
   return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: "18m" });
 };
 
 
 // Utility to compare passwords
 const comparePassword = async (
-  password: string,
-  hashedPassword: string
-): Promise<boolean> => {
+  password,
+  hashedPassword
+) => {
   return bcrypt.compare(password, hashedPassword);
 };
  
-const generateVerificationCode = (): string => {
+const generateVerificationCode = () => {
 	return Math.floor(100000 + Math.random() * 900000).toString(); // Generates a random 6-digit number
 };
 
 
 // Register User
-// Register User
-export const registerUser = async (req: Request, res: Response) => {
+export const registerUser = async (req, res) => {
   try {
 		const { role, firstName, lastName, email, ...userData } = req.body;
 		const name = `${firstName || ""} ${lastName || ""}`.trim();
@@ -109,7 +108,7 @@ export const registerUser = async (req: Request, res: Response) => {
 };
 
 // Verify Email (Handle Expired Codes by Allowing Resend)
-export const verifyEmail = async (req: Request, res: Response) => {
+export const verifyEmail = async (req, res) => {
   try {
      const { email, verificationCode, role } = req.body;
 
@@ -162,7 +161,7 @@ export const verifyEmail = async (req: Request, res: Response) => {
 };
 
 // Resend Verification Code
-export const resendVerificationEmail = async (req: Request, res: Response) => {
+export const resendVerificationEmail = async (req, res) => {
 	try {
 		const { email } = req.body;
 
@@ -199,7 +198,7 @@ export const resendVerificationEmail = async (req: Request, res: Response) => {
 	}
 };
 // Login User
-export const loginUser = async (req: Request, res: Response) => {
+export const loginUser = async (req, res) => {
   try {
 		const { email, password, role } = req.body;
 
@@ -261,7 +260,7 @@ export const loginUser = async (req: Request, res: Response) => {
 
 
 // Send Password Reset Email
-export const requestPasswordReset = async (req: Request, res: Response) => {
+export const requestPasswordReset = async (req, res) => {
 	const { email, role } = req.body;
 
 	try {
@@ -306,11 +305,11 @@ export const requestPasswordReset = async (req: Request, res: Response) => {
 
 
 // Reset Password
-export const resetPassword = async (req: Request, res: Response) => {
+export const resetPassword = async (req, res) => {
 	try {
 		const { token, newPassword } = req.body;
 
-		const decoded = jwt.verify(token, JWT_SECRET) as jwt.JwtPayload;
+		const decoded = jwt.verify(token, JWT_SECRET);
 		const { userId, role } = decoded;
 
 		let user;
@@ -349,7 +348,7 @@ export const resetPassword = async (req: Request, res: Response) => {
 };
 
 // Delete Account
-export const deleteAccount = async (req: Request, res: Response) => {
+export const deleteAccount = async (req, res) => {
 	const { userId, role } = req.body;
 
 	if (!userId) {
@@ -387,7 +386,7 @@ export const deleteAccount = async (req: Request, res: Response) => {
 };
 
 // Fetch User Profile Data
-export const fetchUserProfile = async (req: Request, res: Response) => {
+export const fetchUserProfile = async (req, res) => {
 	try {
 		const { email } = req.params;
 
@@ -445,7 +444,7 @@ export const fetchUserProfile = async (req: Request, res: Response) => {
 		res.status(500).json({ message: "Error fetching user data." });
 	}
 };
-export const fetchCharityProfile = async (req: Request, res: Response) => {
+export const fetchCharityProfile = async (req, res) => {
 	try {
 		const { email } = req.params;
 

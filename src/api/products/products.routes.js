@@ -5,7 +5,7 @@ import {
 	editProduct,
 	archiveProduct,
 	deleteProduct,
-	getCategoryProducts, 
+	getCategoryProducts,
 	getAllProducts,
 	getProductDetails,
 	getProductsByCategory,
@@ -39,7 +39,7 @@ router.patch("/:productId/archive", authMiddleware(), archiveProduct);
 router.delete("/:productId", authMiddleware(), deleteProduct);
 
 // List all products
-router.get("/all",  getAllProducts);
+router.get("/all", getAllProducts);
 
 // Public endpoint to fetch category-based products
 router.get("/category", getCategoryProducts);
@@ -50,6 +50,7 @@ router.get("/details/:productId", getProductDetails);
 // Fetch products by category
 router.get("/category/:category", getProductsByCategory);
 
+// Fetch latest products
 router.get("/listing/latest-products", getProductsByLatest);
 
 // Public endpoint to fetch related products
@@ -58,7 +59,7 @@ router.get("/related", getRelatedProducts);
 // Fetch products based on user role (USER or CHARITY)
 router.get("/listings", authMiddleware(), getRoleBasedListings);
 
+// Fetch user's own listings
 router.get("/mylistings", authMiddleware(), getListingProducts);
-
 
 export default router;

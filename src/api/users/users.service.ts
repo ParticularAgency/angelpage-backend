@@ -1,7 +1,21 @@
 import User from "../../models/User.model";
 
+interface ProfileData {
+	firstName?: string;
+	lastName?: string;
+	dateBirth?: string;
+	email?: string;
+	userName?: string;
+	profileImage?: string;
+	newPassword?: string;
+	currentPassword?: string;
+	addresses?: [];
+}
 
-export const updateUserProfile = async (userId: string, profileData: any) => {
+export const updateUserProfile = async (
+	userId: string,
+	profileData: ProfileData,
+) => {
 	const {
 		firstName,
 		lastName,
@@ -12,7 +26,7 @@ export const updateUserProfile = async (userId: string, profileData: any) => {
 		newPassword,
 		currentPassword,
 		addresses,
-	} = req.body;
+	} = profileData; // Extract properties from the passed profileData object
 
 	const updatedUser = await User.findByIdAndUpdate(
 		userId,
@@ -27,7 +41,7 @@ export const updateUserProfile = async (userId: string, profileData: any) => {
 			currentPassword,
 			addresses,
 		},
-		{ new: true },
+		{ new: true }, // Return the updated document
 	);
 
 	if (!updatedUser) {

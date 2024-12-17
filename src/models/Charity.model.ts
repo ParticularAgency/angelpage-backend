@@ -38,7 +38,7 @@ export interface ICharity extends Document {
 	description: string;
 	role: string;
 	profileImage: string;
-	charityBannerImage: String;
+	charityBannerImage: string; // Use string instead of String
 	profileCompleted: boolean;
 	dateBirth: string;
 	verified: boolean;
@@ -99,7 +99,7 @@ const paymentMethodSchema = new Schema<IPaymentMethod>({
 			},
 			default: "",
 		},
-		postalCode: {
+		postCode: {
 			type: String,
 			required: function (this: IPaymentMethod) {
 				return !this.useShippingAsBilling;
@@ -107,11 +107,10 @@ const paymentMethodSchema = new Schema<IPaymentMethod>({
 			default: "",
 		},
 	},
-
 	useShippingAsBilling: { type: Boolean, default: false },
 });
 
-// User schema definition
+// Charity schema definition
 const charitySchema = new Schema<ICharity>(
 	{
 		firstName: { type: String, required: true },
@@ -121,7 +120,7 @@ const charitySchema = new Schema<ICharity>(
 		password: { type: String, required: true },
 		role: { type: String, enum: ["CHARITY"], default: "CHARITY" },
 		profileImage: { type: String, default: "" },
-		charityBannerImage: { type: String, default: "" },
+		charityBannerImage: { type: String, default: "" }, // Updated type
 		profileCompleted: { type: Boolean, default: false },
 		dateBirth: { type: String, required: false },
 		verified: { type: Boolean, default: false },
@@ -132,24 +131,20 @@ const charitySchema = new Schema<ICharity>(
 		charityID: { type: String, required: false },
 		description: { type: String, required: false },
 		storefrontId: { type: String, unique: true, required: false },
-		listedProducts: [{ type: Schema.Types.ObjectId, ref: "Product" }], // Reference to Product model
-		favoriteProducts: [
-			{ type: mongoose.Schema.Types.ObjectId, ref: "Product" },
-		],
-		favoriteCharities: [
-			{ type: mongoose.Schema.Types.ObjectId, ref: "Charity" },
-		],
+		listedProducts: [{ type: Schema.Types.ObjectId, ref: "Product" }],
+		favoriteProducts: [{ type: Schema.Types.ObjectId, ref: "Product" }],
+		favoriteCharities: [{ type: Schema.Types.ObjectId, ref: "Charity" }],
 		lastWelcomeBackEmailSent: Date,
 		verificationCode: { type: String },
 		verificationExpiry: { type: Date },
 	},
 	{ timestamps: true },
 );
- 
+
 // Hash password before saving
 charitySchema.pre("save", async function (next) {
 	if (this.isNew) {
-		this.storefrontId = uuidv4(); 
+		this.storefrontId = uuidv4();
 	}
 	if (this.isModified("password")) {
 		this.password = await bcrypt.hash(this.password, 10);

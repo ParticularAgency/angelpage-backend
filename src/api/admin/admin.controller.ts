@@ -6,8 +6,9 @@ export const getAdminDashboard = async (req: Request, res: Response) => {
 		const data = await getDashboardData();
 		res.json(data);
 	} catch (error) {
+		console.error("Error retrieving admin dashboard data:", error); // Log the error
 		res
 			.status(500)
-			.json({ message: "Failed to retrieve admin dashboard data" });
+			.json({ message: "Failed to retrieve admin dashboard data", error });
 	}
 };

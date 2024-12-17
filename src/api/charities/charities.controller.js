@@ -1,10 +1,10 @@
-import { Request, Response } from "express";
+// import { Request, Response } from "express";
 import cloudinary from "../../config/cloudinary";
 import Charity from "../../models/Charity.model";
 import bcrypt from "bcryptjs";
 
 // Update profile function
-export const updateProfile = async (req: Request, res: Response) => {
+export const updateProfile = async (req, res) => {
 	try {
 		const { userId } = req.user; // Assumes userId is set by middleware
 		const {
@@ -22,7 +22,7 @@ export const updateProfile = async (req: Request, res: Response) => {
 		const user = await Charity.findById(userId);
 		if (!user) return res.status(404).json({ message: "User not found" });
 
-		const updateData: Partial<typeof user> = {};
+		const updateData = {};
 
 		// Handle password update if both current and new passwords are provided
 		if (currentPassword && newPassword) {
@@ -57,7 +57,7 @@ export const updateProfile = async (req: Request, res: Response) => {
 			);
 			updateData.profileImage = result.secure_url;
 		}
- 
+
 		// Handle charity banner image upload
 		if (req.files && req.files.charityBannerImage) {
 			const result = await cloudinary.uploader.upload(
@@ -84,7 +84,7 @@ export const updateProfile = async (req: Request, res: Response) => {
 };
 
 // Get charity profile function
-export const getCharityProfile = async (req: Request, res: Response) => {
+export const getCharityProfile = async (req, res) => {
 	try {
 		const userId = req.user?.userId;
 		if (!userId)
@@ -103,7 +103,7 @@ export const getCharityProfile = async (req: Request, res: Response) => {
 };
 
 // Update profile function
-export const updateCharityAdminInfo = async (req: Request, res: Response) => {
+export const updateCharityAdminInfo = async (req, res) => {
 	try {
 		const { userId } = req.user; // userId should be set by the auth middleware
 		const { charityName, charityNumber, charityID, description } = req.body;
@@ -127,7 +127,7 @@ export const updateCharityAdminInfo = async (req: Request, res: Response) => {
 };
 
 // Get charity profile function
-export const getCharityAdminInfo = async (req: Request, res: Response) => {
+export const getCharityAdminInfo = async (req, res) => {
 	try {
 		const userId = req.user?.userId;
 		if (!userId)
@@ -145,7 +145,7 @@ export const getCharityAdminInfo = async (req: Request, res: Response) => {
 	}
 };
 // Add address function
-export const addAddress = async (req: Request, res: Response) => {
+export const addAddress = async (req, res) => {
 	try {
 		const { userId } = req.user;
 		const newAddress = req.body; // Expects address data in the request body
@@ -167,7 +167,7 @@ export const addAddress = async (req: Request, res: Response) => {
 };
 
 // Update address function
-export const updateAddress = async (req: Request, res: Response) => {
+export const updateAddress = async (req, res) => {
 	try {
 		const { userId } = req.user;
 		const { addressId } = req.params;
@@ -193,7 +193,7 @@ export const updateAddress = async (req: Request, res: Response) => {
 };
 
 // Delete address function
-export const deleteAddress = async (req: Request, res: Response) => {
+export const deleteAddress = async (req, res) => {
 	try {
 		const { userId } = req.user;
 		const { addressId } = req.params;
@@ -219,7 +219,7 @@ export const deleteAddress = async (req: Request, res: Response) => {
 
 // payment methodes schamas start here
 
-export const addPayment = async (req: Request, res: Response) => {
+export const addPayment = async (req, res) => {
 	try {
 		const { userId } = req.user;
 		const newPayment = req.body; // Assumes payment data is in the request body
@@ -241,7 +241,7 @@ export const addPayment = async (req: Request, res: Response) => {
 	}
 };
 
-export const updatePayment = async (req: Request, res: Response) => {
+export const updatePayment = async (req, res) => {
 	try {
 		const { userId } = req.user;
 		const { paymentId } = req.params;
@@ -268,7 +268,7 @@ export const updatePayment = async (req: Request, res: Response) => {
 	}
 };
 
-export const deletePayment = async (req: Request, res: Response) => {
+export const deletePayment = async (req, res) => {
 	try {
 		const { userId } = req.user;
 		const { paymentId } = req.params;
@@ -294,7 +294,7 @@ export const deletePayment = async (req: Request, res: Response) => {
 
 
 // Storefront data
-export const getStorefrontData = async (req: Request, res: Response) => {
+export const getStorefrontData = async (req, res) => {
 	try {
 		const { storefrontid } = req.params;
 
@@ -320,7 +320,7 @@ console.log("Charity with populated products:", charity);
 	}
 };
 
-export const getCharityList = async (req: Request, res: Response) => {
+export const getCharityList = async (req, res) => {
 	try {
 		const charities = await Charity.find(); // You can add filters as needed (e.g., status: 'approved')
 		res.status(200).json({ charities });

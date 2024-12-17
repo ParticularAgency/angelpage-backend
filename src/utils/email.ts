@@ -1,38 +1,49 @@
-// src/utils/email.ts
-import sgMail from "@sendgrid/mail";
+import sgMail, { MailDataRequired } from "@sendgrid/mail";
 
 // Initialize SendGrid with the API key
-sgMail.setApiKey(process.env.SENDGRID_API_KEY || "");
+const sendGridApiKey = process.env.SENDGRID_API_KEY || "";
+if (!sendGridApiKey) {
+	throw new Error("SENDGRID_API_KEY is not set in environment variables.");
+}
+sgMail.setApiKey(sendGridApiKey);
 
 interface EmailOptions {
-	to: string;
-	subject: string;
-	text?: string;
-	html?: string;
+	to: string; // Recipient email
+	subject: string; // Email subject
+	text?: string; // Plain text content (optional)
+	html?: string; // HTML content (optional)
 }
 
 // General Send Email Function
-export const sendEmail = async ({ to, subject, text, html }: EmailOptions) => {
-	const msg = {
-		from: process.env.SENDGRID_FROM || "noreply@yourdomain.com", // Verified sender email
+export const sendEmail = async ({
+	to,
+	subject,
+	text,
+	html,
+}: EmailOptions): Promise<void> => {
+	const fromEmail = process.env.SENDGRID_FROM || "noreply@yourdomain.com"; // Verified sender email
+	if (!fromEmail) {
+		throw new Error("SENDGRID_FROM is not set in environment variables.");
+	}
+
+	const msg: MailDataRequired = {
+		from: fromEmail,
 		to,
 		subject,
-		text,
-		html,
+		text: text || "", // Default to an empty string if not provided
+		html: html || "", // Default to an empty string if not provided
 	};
 
 	try {
 		const response = await sgMail.send(msg);
-		console.log(`Email sent successfully to ${to}:`, response);
-	} catch (error: any) {
-		console.error(
-			"Error sending email:",
-			error.response ? error.response.body : error,
-		);
+		console.log(`Email sent successfully to ${to}:`, response[0].statusCode);
+	} catch (error) {
+		
+			console.error("Error sending email:");
+		
 		throw new Error("Failed to send email");
 	}
 };
-
 
 // Send Welcome Email
 export const sendWelcomeEmail = async (user: {
@@ -89,8 +100,10 @@ export const sendVerificationEmail = async (user: {
 		subject: "Verify Your Account",
 		text: `Please use the following code to verify your account: ${user.verificationCode}`,
 		html: `<p>Hello ${user.firstName || "user"},</p>
-			   <p>Your verification code is: <strong>${user.verificationCode}</strong></p>
-			   <p>This code is valid for 15 minutes.</p>`,
+           <p>Your verification code is: <strong>${
+							user.verificationCode
+						}</strong></p>
+           <p>This code is valid for 15 minutes.</p>`,
 	});
 };
 

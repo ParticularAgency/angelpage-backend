@@ -1,9 +1,16 @@
-import User from "../models/User.model";
+import User, { IUser } from "../models/User.model";
 
-export const fetchUserProfile = async (userId: string) => {
+// Fetch User Profile by User ID
+export const fetchUserProfile = async (
+	userId: string,
+): Promise<IUser | null> => {
 	return User.findById(userId);
 };
 
-export const saveUserProfile = async (userId: string, profileData: any) => {
+// Save or Update User Profile
+export const saveUserProfile = async (
+	userId: string,
+	profileData: Partial<IUser>, // Use Partial<IUser> to allow updating only specific fields
+): Promise<IUser | null> => {
 	return User.findByIdAndUpdate(userId, profileData, { new: true });
 };

@@ -1,11 +1,15 @@
-import { Request, Response } from "express";
+// import { Request, Response } from "express";
 import Product from "../../models/Product.model";
 import User from "../../models/User.model";
 import Charity from "../../models/Charity.model";
 import cloudinary from "../../config/cloudinary";
 
+/**
+ * @param {import("express").Request} req
+ * @param {import("express").Response} res
+ */
 // Create a new product
-export const createProduct = async (req: Request, res: Response) => {
+export const createProduct = async (req, res) => {
 	const {
 		name,
 		price,
@@ -57,7 +61,7 @@ export const createProduct = async (req: Request, res: Response) => {
 		// Handle file uploads if provided
 		const images = [];
 		if (req.files && Array.isArray(req.files)) {
-			for (const file of req.files as Express.Multer.File[]) {
+			for (const file of req.files) {
 				const result = await cloudinary.uploader.upload(file.path, {
 					folder: "products",
 				});
@@ -126,8 +130,12 @@ export const createProduct = async (req: Request, res: Response) => {
 	}
 };
 
+/**
+ * @param {import("express").Request} req
+ * @param {import("express").Response} res
+ */
 // Edit a product
-export const editProduct = async (req: Request, res: Response) => {
+export const editProduct = async (req, res) => {
 	const { productId } = req.params;
 	const updates = req.body;
 
@@ -149,8 +157,12 @@ export const editProduct = async (req: Request, res: Response) => {
 	}
 };
 
+/**
+ * @param {import("express").Request} req
+ * @param {import("express").Response} res
+ */
 // Archive (soft delete) a product
-export const archiveProduct = async (req: Request, res: Response) => {
+export const archiveProduct = async (req, res) => {
 	const { productId } = req.params;
 
 	try {
@@ -173,8 +185,12 @@ export const archiveProduct = async (req: Request, res: Response) => {
 	}
 };
 
+/**
+ * @param {import("express").Request} req
+ * @param {import("express").Response} res
+ */
 // Permanently delete a product
-export const deleteProduct = async (req: Request, res: Response) => {
+export const deleteProduct = async (req, res) => {
 	const { productId } = req.params;
 
 	try {
@@ -200,12 +216,16 @@ export const deleteProduct = async (req: Request, res: Response) => {
 	}
 };
 
+/**
+ * @param {import("express").Request} req
+ * @param {import("express").Response} res
+ */
 // Fetch all products (public access)
-export const getAllProducts = async (req: Request, res: Response) => {
+export const getAllProducts = async (req, res) => {
   const { isArchived } = req.query; // Optional query to handle archived state
 
   try {
-    const query: any = {}; // Initialize query object
+    const query = {}; // Initialize query object
     if (isArchived !== undefined) {
       query.isArchived = isArchived === "true"; // Handle archived filter
     } else {
@@ -237,13 +257,17 @@ export const getAllProducts = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * @param {import("express").Request} req
+ * @param {import("express").Response} res
+ */
 // Fetch products by category (public access)
-export const getProductsByCategory = async (req: Request, res: Response) => {
+export const getProductsByCategory = async (req, res) => {
   const { category } = req.params; // Extract category from the URL params
   const { isArchived } = req.query; // Optional query to handle archived state
 
   try {
-    const query: any = { category }; // Base query to filter by category
+    const query = { category }; // Base query to filter by category
     if (isArchived !== undefined) {
       query.isArchived = isArchived === "true"; // Handle archived filter
     } else {
@@ -275,13 +299,17 @@ export const getProductsByCategory = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * @param {import("express").Request} req
+ * @param {import("express").Response} res
+ */
 // Fetch products by category or subcategory (public access)
-export const getCategoryProducts = async (req: Request, res: Response) => {
+export const getCategoryProducts = async (req, res) => {
   const { category, subcategory } = req.query; // Extract category and subcategory from query parameters
   const { isArchived } = req.query; // Optional query to handle archived state
 
   try {
-    const query: any = {}; // Initialize query object
+    const query = {}; // Initialize query object
     if (category) query.category = category; // Add category to the query if provided
     if (subcategory) query.subcategory = subcategory; // Add subcategory to the query if provided
     if (isArchived !== undefined) {
@@ -317,8 +345,12 @@ export const getCategoryProducts = async (req: Request, res: Response) => {
   }
 };
 
+/**
+ * @param {import("express").Request} req
+ * @param {import("express").Response} res
+ */
 // Fetch latest 10 products (public access)
-export const getProductsByLatest = async (_req: Request, res: Response) => {
+export const getProductsByLatest = async (_req, res) => {
   try {
     const products = await Product.find({ isArchived: false }) 
       .populate("seller", "firstName lastName userName profileImage addresses")
@@ -347,8 +379,12 @@ export const getProductsByLatest = async (_req: Request, res: Response) => {
   }
 };
 
+/**
+ * @param {import("express").Request} req
+ * @param {import("express").Response} res
+ */
 // Controller for fetching related products
-export const getRelatedProducts = async (req: Request, res: Response) => {
+export const getRelatedProducts = async (req, res) => {
   const { category } = req.query;
 
   try {
@@ -378,9 +414,12 @@ export const getRelatedProducts = async (req: Request, res: Response) => {
   }
 };
 
-
+/**
+ * @param {import("express").Request} req
+ * @param {import("express").Response} res
+ */
 // Get role-based product listings (USER or CHARITY)
-export const getRoleBasedListings = async (req: Request, res: Response) => {
+export const getRoleBasedListings = async (req, res) => {
 	const { userId, role } = req.user;
 
 	try {
@@ -414,8 +453,12 @@ export const getRoleBasedListings = async (req: Request, res: Response) => {
 	}
 };
 
+/**
+ * @param {import("express").Request} req
+ * @param {import("express").Response} res
+ */
 // Get Product Details (Public Access)
-export const getProductDetails = async (req: Request, res: Response) => {
+export const getProductDetails = async (req, res) => {
   const { productId } = req.params;
 
   try {
@@ -476,13 +519,16 @@ export const getProductDetails = async (req: Request, res: Response) => {
 };
 
 
-
-export const getListingProducts = async (req: Request, res: Response) => {
+/**
+ * @param {import("express").Request} req
+ * @param {import("express").Response} res
+ */
+export const getListingProducts = async (req, res) => {
 	const { userId, role } = req.user; // Extract userId and role from the authenticated request
 	const { status, isArchived } = req.query; // Optional filters for status and archived state
 
 	try {
-		const query: any = {
+		const query = {
 			seller: userId, // Only fetch products posted by the current user/charity
 		};
 

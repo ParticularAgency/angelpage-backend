@@ -4,11 +4,13 @@
 		"module": "CommonJS", // Keep as CommonJS for Node.js
 		"esModuleInterop": true, // Enable this option
 		"skipLibCheck": true, // Skip type checking of declaration files
+		"allowJs": true,
+		"checkJs": false ,
 		"forceConsistentCasingInFileNames": true, // Ensure consistent casing in file names
 		"strict": true, // Enable all strict type checking options
 		"outDir": "./dist", // Output directory for compiled files
 		"rootDir": "./src" // Input directory for source files
 	},
-	"include": ["src/**/*.ts"],
+	"include": ["src/**/*.ts", "src/**/*.js"],
 	"exclude": ["node_modules"]
 }
