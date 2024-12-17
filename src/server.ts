@@ -15,10 +15,10 @@ const PORT = process.env.PORT || 5000;
 
 
 // Middleware
-const FRONT_PORT = process.env.FRONTEND_BASE_URL || "http://localhost:3000";
+// const FRONT_PORT = process.env.FRONTEND_BASE_URL || "http://localhost:3000";
 app.use(
 	cors({
-		origin: FRONT_PORT, // Allow the frontend URL
+		origin: "http://5.182.18.129:3000", // Allow the frontend URL
 		methods: ["GET", "POST", "PUT", "DELETE"],
 		credentials: true, // Allow cookies if necessary
 	}),

@@ -14,12 +14,12 @@ dotenv_1.default.config();
 const app = (0, express_1.default)();
 // Load environment variables
 const PORT = process.env.PORT || 5000;
-const FRONTEND_BASE_URL = process.env.FRONTEND_BASE_URL || "http://localhost:3000";
 // Middleware
+const FRONT_PORT = process.env.FRONTEND_BASE_URL || "http://localhost:3000";
 app.use((0, cors_1.default)({
-    origin: FRONTEND_BASE_URL, // Adjust to the frontend's URL in production
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH"], // Add PATCH if needed
-    credentials: true, // Allow cookies if using session-based authentication
+    origin: FRONT_PORT, // Allow the frontend URL
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true, // Allow cookies if necessary
 }));
 app.use(body_parser_1.default.json()); // Parse JSON bodies
 app.use(body_parser_1.default.urlencoded({ extended: true })); // Parse URL-encoded bodies
