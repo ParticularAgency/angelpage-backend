@@ -12,15 +12,15 @@ const app = express();
 
 // Load environment variables
 const PORT = process.env.PORT || 5000;
-const FRONTEND_BASE_URL =
-	process.env.FRONTEND_BASE_URL || "http://localhost:3000";
+
 
 // Middleware
+const FRONT_PORT = process.env.FRONTEND_BASE_URL || "http://localhost:3000";
 app.use(
 	cors({
-		origin: FRONTEND_BASE_URL, // Adjust to the frontend's URL in production
-		methods: ["GET", "POST", "PUT", "DELETE", "PATCH"], // Add PATCH if needed
-		credentials: true, // Allow cookies if using session-based authentication
+		origin: FRONT_PORT, // Allow the frontend URL
+		methods: ["GET", "POST", "PUT", "DELETE"],
+		credentials: true, // Allow cookies if necessary
 	}),
 );
 
