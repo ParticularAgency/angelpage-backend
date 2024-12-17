@@ -4,10 +4,6 @@ import User from "../../models/User.model";
 import Charity from "../../models/Charity.model";
 import cloudinary from "../../config/cloudinary";
 
-/**
- * @param {import("express").Request} req
- * @param {import("express").Response} res
- */
 // Create a new product
 export const createProduct = async (req, res) => {
 	const {
@@ -130,10 +126,6 @@ export const createProduct = async (req, res) => {
 	}
 };
 
-/**
- * @param {import("express").Request} req
- * @param {import("express").Response} res
- */
 // Edit a product
 export const editProduct = async (req, res) => {
 	const { productId } = req.params;
@@ -157,10 +149,6 @@ export const editProduct = async (req, res) => {
 	}
 };
 
-/**
- * @param {import("express").Request} req
- * @param {import("express").Response} res
- */
 // Archive (soft delete) a product
 export const archiveProduct = async (req, res) => {
 	const { productId } = req.params;
@@ -185,10 +173,6 @@ export const archiveProduct = async (req, res) => {
 	}
 };
 
-/**
- * @param {import("express").Request} req
- * @param {import("express").Response} res
- */
 // Permanently delete a product
 export const deleteProduct = async (req, res) => {
 	const { productId } = req.params;
@@ -216,153 +200,137 @@ export const deleteProduct = async (req, res) => {
 	}
 };
 
-/**
- * @param {import("express").Request} req
- * @param {import("express").Response} res
- */
 // Fetch all products (public access)
 export const getAllProducts = async (req, res) => {
-  const { isArchived } = req.query; // Optional query to handle archived state
+	const { isArchived } = req.query; // Optional query to handle archived state
 
-  try {
-    const query = {}; // Initialize query object
-    if (isArchived !== undefined) {
-      query.isArchived = isArchived === "true"; // Handle archived filter
-    } else {
-      query.isArchived = false; // Default to showing only active products
-    }
+	try {
+		const query = {}; // Initialize query object
+		if (isArchived !== undefined) {
+			query.isArchived = isArchived === "true"; // Handle archived filter
+		} else {
+			query.isArchived = false; // Default to showing only active products
+		}
 
-    const products = await Product.find(query)
-      .populate("seller", "firstName lastName userName profileImage addresses")
-      .populate("charity", "charityName charityID profileImage")
-      .sort({ createdAt: -1 }); // Sort by creation date (newest first)
-
-    if (!products || products.length === 0) {
-      return res.status(404).json({ message: "No products found." });
-    }
- const productsWithAddress = products.map(product => ({
-		...product.toObject(),
-		seller: {
-			firstName: product.seller?.firstName,
-			lastName: product.seller?.lastName,
-			profileImage: product.seller?.profileImage,
-			address: product.seller?.addresses?.[0], // Include default address
-		},
- }));
-
- return res.status(200).json({ products: productsWithAddress });
-  } catch (error) {
-    console.error("Error fetching all products:", error);
-    return res.status(500).json({ message: "Failed to fetch all products." });
-  }
-};
-
-/**
- * @param {import("express").Request} req
- * @param {import("express").Response} res
- */
-// Fetch products by category (public access)
-export const getProductsByCategory = async (req, res) => {
-  const { category } = req.params; // Extract category from the URL params
-  const { isArchived } = req.query; // Optional query to handle archived state
-
-  try {
-    const query = { category }; // Base query to filter by category
-    if (isArchived !== undefined) {
-      query.isArchived = isArchived === "true"; // Handle archived filter
-    } else {
-      query.isArchived = false; // Default to showing only active products
-    }
-
-    const products = await Product.find(query)
-      .populate("seller", "firstName lastName userName profileImage  addresses")
-      .populate("charity", "charityName charityID profileImage")
-      .sort({ createdAt: -1 }); // Sort products by the latest creation date
-
-    if (!products || products.length === 0) {
-      return res.status(404).json({ message: "No products found for this category." });
-    }
- const productsWithAddress = products.map(product => ({
-		...product.toObject(),
-		seller: {
-			firstName: product.seller?.firstName,
-			lastName: product.seller?.lastName,
-			profileImage: product.seller?.profileImage,
-			address: product.seller?.addresses?.[0], // Include default address
-		},
- }));
-
- return res.status(200).json({ products: productsWithAddress });
-  } catch (error) {
-    console.error("Error fetching products by category:", error);
-    return res.status(500).json({ message: "Failed to fetch products by category." });
-  }
-};
-
-/**
- * @param {import("express").Request} req
- * @param {import("express").Response} res
- */
-// Fetch products by category or subcategory (public access)
-export const getCategoryProducts = async (req, res) => {
-  const { category, subcategory } = req.query; // Extract category and subcategory from query parameters
-  const { isArchived } = req.query; // Optional query to handle archived state
-
-  try {
-    const query = {}; // Initialize query object
-    if (category) query.category = category; // Add category to the query if provided
-    if (subcategory) query.subcategory = subcategory; // Add subcategory to the query if provided
-    if (isArchived !== undefined) {
-      query.isArchived = isArchived === "true"; // Handle archived filter
-    } else {
-      query.isArchived = false; // Default to showing only active products
-    }
-
-    const products = await Product.find(query)
+		const products = await Product.find(query)
 			.populate("seller", "firstName lastName userName profileImage addresses")
 			.populate("charity", "charityName charityID profileImage")
 			.sort({ createdAt: -1 }); // Sort by creation date (newest first)
 
-    if (!products || products.length === 0) {
-      return res
-        .status(404)
-        .json({ message: "No products found for the selected category." });
-    }
- const productsWithAddress = products.map(product => ({
-		...product.toObject(),
-		seller: {
-			firstName: product.seller?.firstName,
-			lastName: product.seller?.lastName,
-			profileImage: product.seller?.profileImage,
-			address: product.seller?.addresses?.[0], // Include default address
-		},
- }));
+		if (!products || products.length === 0) {
+			return res.status(404).json({ message: "No products found." });
+		}
+		const productsWithAddress = products.map(product => ({
+			...product.toObject(),
+			seller: {
+				firstName: product.seller?.firstName,
+				lastName: product.seller?.lastName,
+				profileImage: product.seller?.profileImage,
+				address: product.seller?.addresses?.[0], // Include default address
+			},
+		}));
 
- return res.status(200).json({ products: productsWithAddress });
-  } catch (error) {
-    console.error("Error fetching category products:", error);
-    return res.status(500).json({ message: "Failed to fetch category products." });
-  }
+		return res.status(200).json({ products: productsWithAddress });
+	} catch (error) {
+		console.error("Error fetching all products:", error);
+		return res.status(500).json({ message: "Failed to fetch all products." });
+	}
 };
 
-/**
- * @param {import("express").Request} req
- * @param {import("express").Response} res
- */
+// Fetch products by category (public access)
+export const getProductsByCategory = async (req, res) => {
+	const { category } = req.params; // Extract category from the URL params
+	const { isArchived } = req.query; // Optional query to handle archived state
+
+	try {
+		const query = { category }; // Base query to filter by category
+		if (isArchived !== undefined) {
+			query.isArchived = isArchived === "true"; // Handle archived filter
+		} else {
+			query.isArchived = false; // Default to showing only active products
+		}
+
+		const products = await Product.find(query)
+			.populate("seller", "firstName lastName userName profileImage  addresses")
+			.populate("charity", "charityName charityID profileImage")
+			.sort({ createdAt: -1 }); // Sort products by the latest creation date
+
+		if (!products || products.length === 0) {
+			return res.status(404).json({ message: "No products found for this category." });
+		}
+		const productsWithAddress = products.map(product => ({
+			...product.toObject(),
+			seller: {
+				firstName: product.seller?.firstName,
+				lastName: product.seller?.lastName,
+				profileImage: product.seller?.profileImage,
+				address: product.seller?.addresses?.[0], // Include default address
+			},
+		}));
+
+		return res.status(200).json({ products: productsWithAddress });
+	} catch (error) {
+		console.error("Error fetching products by category:", error);
+		return res.status(500).json({ message: "Failed to fetch products by category." });
+	}
+};
+
+// Fetch products by category or subcategory (public access)
+export const getCategoryProducts = async (req, res) => {
+	const { category, subcategory } = req.query; // Extract category and subcategory from query parameters
+	const { isArchived } = req.query; // Optional query to handle archived state
+
+	try {
+		const query = {}; // Initialize query object
+		if (category) query.category = category; // Add category to the query if provided
+		if (subcategory) query.subcategory = subcategory; // Add subcategory to the query if provided
+		if (isArchived !== undefined) {
+			query.isArchived = isArchived === "true"; // Handle archived filter
+		} else {
+			query.isArchived = false; // Default to showing only active products
+		}
+
+		const products = await Product.find(query)
+			.populate("seller", "firstName lastName userName profileImage addresses")
+			.populate("charity", "charityName charityID profileImage")
+			.sort({ createdAt: -1 }); // Sort by creation date (newest first)
+
+		if (!products || products.length === 0) {
+			return res
+				.status(404)
+				.json({ message: "No products found for the selected category." });
+		}
+		const productsWithAddress = products.map(product => ({
+			...product.toObject(),
+			seller: {
+				firstName: product.seller?.firstName,
+				lastName: product.seller?.lastName,
+				profileImage: product.seller?.profileImage,
+				address: product.seller?.addresses?.[0], // Include default address
+			},
+		}));
+
+		return res.status(200).json({ products: productsWithAddress });
+	} catch (error) {
+		console.error("Error fetching category products:", error);
+		return res.status(500).json({ message: "Failed to fetch category products." });
+	}
+};
+
 // Fetch latest 10 products (public access)
 export const getProductsByLatest = async (_req, res) => {
-  try {
-    const products = await Product.find({ isArchived: false }) 
-      .populate("seller", "firstName lastName userName profileImage addresses")
-      .populate("charity", "charityName charityID profileImage")
-      .sort({ createdAt: -1 }) 
-      .limit(10); 
+	try {
+		const products = await Product.find({ isArchived: false })
+			.populate("seller", "firstName lastName userName profileImage addresses")
+			.populate("charity", "charityName charityID profileImage")
+			.sort({ createdAt: -1 })
+			.limit(10);
 
-    if (!products || products.length === 0) {
-      return res.status(404).json({ message: "No products found." });
-    }
+		if (!products || products.length === 0) {
+			return res.status(404).json({ message: "No products found." });
+		} 
 
-   const productsWithAddress = products.map(product => ({
+		const productsWithAddress = products.map(product => ({
 			...product.toObject(),
 			seller: {
 				firstName: product.seller?.firstName,
@@ -373,31 +341,27 @@ export const getProductsByLatest = async (_req, res) => {
 		}));
 
 		return res.status(200).json({ products: productsWithAddress });
-  } catch (error) {
-    console.error("Error fetching latest products:", error);
-    return res.status(500).json({ message: "Failed to fetch latest products." });
-  }
+	} catch (error) {
+		console.error("Error fetching latest products:", error);
+		return res.status(500).json({ message: "Failed to fetch latest products." });
+	}
 };
 
-/**
- * @param {import("express").Request} req
- * @param {import("express").Response} res
- */
 // Controller for fetching related products
 export const getRelatedProducts = async (req, res) => {
-  const { category } = req.query;
+	const { category } = req.query;
 
-  try {
-    const products = await Product.find({ category, isArchived: false })
-      .sort({ createdAt: -1 })
-      .limit(10)
-      .populate('charity', 'charityName profileImage');
+	try {
+		const products = await Product.find({ category, isArchived: false })
+			.sort({ createdAt: -1 })
+			.limit(10)
+			.populate('charity', 'charityName profileImage');
 
-    if (!products.length) {
-      return res.status(404).json({ message: 'No related products found.' });
-    }
+		if (!products.length) {
+			return res.status(404).json({ message: 'No related products found.' });
+		}
 
-   const productsWithAddress = products.map(product => ({
+		const productsWithAddress = products.map(product => ({
 			...product.toObject(),
 			seller: {
 				firstName: product.seller?.firstName,
@@ -408,16 +372,13 @@ export const getRelatedProducts = async (req, res) => {
 		}));
 
 		return res.status(200).json({ products: productsWithAddress });
-  } catch (err) {
-    console.error('Error fetching related products:', err);
-    res.status(500).json({ message: 'Failed to fetch related products.' });
-  }
+	} catch (err) {
+		console.error('Error fetching related products:', err);
+		res.status(500).json({ message: 'Failed to fetch related products.' });
+	}
 };
 
-/**
- * @param {import("express").Request} req
- * @param {import("express").Response} res
- */
+
 // Get role-based product listings (USER or CHARITY)
 export const getRoleBasedListings = async (req, res) => {
 	const { userId, role } = req.user;
@@ -453,28 +414,24 @@ export const getRoleBasedListings = async (req, res) => {
 	}
 };
 
-/**
- * @param {import("express").Request} req
- * @param {import("express").Response} res
- */
 // Get Product Details (Public Access)
 export const getProductDetails = async (req, res) => {
-  const { productId } = req.params;
+	const { productId } = req.params;
 
-  try {
-    // Fetch product details by ID, including populated fields for seller and charity
-    const product = await Product.findById(productId)
+	try {
+		// Fetch product details by ID, including populated fields for seller and charity
+		const product = await Product.findById(productId)
 			.populate("seller", "firstName lastName profileImage  addresses")
 			.populate("charity", "charityName charityID storefrontId profileImage");
 
-    if (!product) {
-      return res.status(404).json({ message: "Product not found." });
-    }
+		if (!product) {
+			return res.status(404).json({ message: "Product not found." });
+		}
 
 
 
-    // Return product details with charity and seller info
-    return res.status(200).json({
+		// Return product details with charity and seller info
+		return res.status(200).json({
 			product: {
 				id: product._id,
 				name: product.name,
@@ -510,19 +467,16 @@ export const getProductDetails = async (req, res) => {
 				},
 			},
 		});
-  } catch (error) {
-    console.error("Error fetching product details:", error);
-    return res
-      .status(500)
-      .json({ message: "Failed to fetch product details." });
-  }
+	} catch (error) {
+		console.error("Error fetching product details:", error);
+		return res
+			.status(500)
+			.json({ message: "Failed to fetch product details." });
+	}
 };
 
 
-/**
- * @param {import("express").Request} req
- * @param {import("express").Response} res
- */
+
 export const getListingProducts = async (req, res) => {
 	const { userId, role } = req.user; // Extract userId and role from the authenticated request
 	const { status, isArchived } = req.query; // Optional filters for status and archived state

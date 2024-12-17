@@ -1,28 +1,23 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
-// Define the interface for individual favorite items
 interface IFavoriteItem {
 	itemId: string;
-	type: "Product" | "Charity"; // Enum-like constraint
+	type: "Product" | "Charity";
 }
 
-// Define the interface for the Favorite document
 export interface IFavorite extends Document {
-	user: Types.ObjectId; // Reference to a User document
-	items: IFavoriteItem[]; // Array of favorite items
+	user: Types.ObjectId; // Use Types.ObjectId for strict typing
+	items: IFavoriteItem[];
 }
 
-// Schema for individual favorite items
 const favoriteItemSchema = new Schema<IFavoriteItem>({
-	itemId: { type: String, required: true }, // ID of the favorite item
-	type: { type: String, enum: ["Product", "Charity"], required: true }, // Type of the favorite item
+	itemId: { type: String, required: true },
+	type: { type: String, enum: ["Product", "Charity"], required: true },
 });
 
-// Schema for the Favorite document
 const favoriteSchema = new Schema<IFavorite>({
-	user: { type: Schema.Types.ObjectId, ref: "User", required: true }, // Reference to the User model
-	items: [favoriteItemSchema], // Embedded array of favorite items
+	user: { type: Schema.Types.ObjectId, ref: "User", required: true }, // Explicitly use Schema.Types.ObjectId
+	items: [favoriteItemSchema],
 });
 
-// Export the Favorite model
 export default mongoose.model<IFavorite>("Favorite", favoriteSchema);

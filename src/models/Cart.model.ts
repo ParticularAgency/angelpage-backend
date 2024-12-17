@@ -6,7 +6,7 @@ interface CartItem {
 }
 export interface ICartDocument extends Document {
 	userId: mongoose.Types.ObjectId;
-	items: CartItem[]; 
+	items: CartItem[];
 }
 
 const CartSchema = new Schema<ICartDocument>({
