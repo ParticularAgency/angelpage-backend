@@ -236,7 +236,7 @@ export const addPayment = async (
 	try {
 		const userId = req.user?.userId;
 		const newPayment = req.body;
-
+        
 		const user = await User.findById(userId);
 		if (!user) {
 			res.status(404).json({ message: "User not found" });

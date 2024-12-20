@@ -29,7 +29,7 @@ const favoriteItemSchema = new mongoose_1.Schema({
     type: { type: String, enum: ["Product", "Charity"], required: true },
 });
 const favoriteSchema = new mongoose_1.Schema({
-    user: { type: mongoose_1.Schema.Types.ObjectId, ref: "User", required: true }, // Explicitly use Schema.Types.ObjectId
+    user: { type: mongoose_1.Schema.Types.ObjectId, ref: "User", required: true },
     items: [favoriteItemSchema],
 });
 exports.default = mongoose_1.default.model("Favorite", favoriteSchema);

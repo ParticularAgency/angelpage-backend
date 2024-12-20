@@ -1,0 +1,13 @@
+{
+  "type": "service_account",
+  "project_id": "angelpage-e-commerce-charity",
+  "private_key_id": "1c959ff317f773c6777a7005d80e04947e5e56b6",
+  "private_key": "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCZsRH2uH6D0qSE\n9qXHUvPH5ZZZNNwolHsHfHqbzn68Cg2TRVxEmhngRmFbQpY2kTpPGGkYDpsb/ov+\nRv+dD8KA46Uaa64MznRldFGv7QvZNNNQBa4g15DwXjb6F4uEsMfGOop7Zm88arJ0\nofi46wlF5pE2qiQF1QeCfoe8soaGq9Rk77BAlW/D4Wqev4OCdReOvGMfxwSgK0/p\n9jiMjxpq99fMoLVWXv0NgV9F0E9JNNgXUSvJhJfoK3P/5gx0hWvj7Ha6RYY6Q031\nzk4SjrkNcUEzCMFd2Zqq80O7yjC5afyfRY/lMKRKUyw+9e4QTcE7NO8ZGJFcy4cu\nwLgXsdPVAgMBAAECggEAIrM2q9Z8ZA1xTT7174K0XUfiEfqMEZJyk55gfWCaPyDi\n70MMAcYsPPWPAiCO0zunZ1fK1J5pmWC3oV3M1RyLjPe43XX96lDLuWNRlS+nSu9x\nHWJm7e3VwNt4vK8HtloGhORPQ2y9hS3O5GP0iOWyJojX9PhloTZ3l1gzk+BX3LxB\nj5sEk9KL/3/MzZ8zeVlTU2FV6wLdNHwezQ/Mues8D450bGa2VklPA6Cf6WXuVaSe\ntSchr1ufCgJfAdLZ/USQXBhmhKdXSoF4ditQG+5fv7ZOJkIUZlY24BZn5s8cfzlS\nmgDkRDcvBH9/S4VkvZDcn9aiuTwCNyioKqCKb6RLkQKBgQDY0Y/OMhjQnf2MknLy\nyijcS4UUPLQPd0D4LXdNmOcUK3HyUDgFAY4ZE5kd59J+4ucIZJ8lHTDYp4gOKA+q\nPpEJjdkdWvVIgv9cGZl0iZ0q9HAnwdBzi2yw+xvMJpz3rRYkZzLLt42Nv/dI+9RS\n+vQg8QzF2WyzYRiOqsxTqBZRsQKBgQC1dyNGLS1CpH+qy35ROVmh61zUPf/ZY81+\nFdqsacajmLkPeVF/M1cUz0VHQOKVGmi+OTkOJtgIdbcbmcocmzv8oQT5aS1w3WoE\nMmm+N3ONaayOPsUycuHqnshBXJfbcGipLRDLLLmsx7Dpyeu9FuNcd0YNUX8BmVPI\nfK0LvAJpZQKBgQDOCj+VXCgWv7y+BEG2FYTE7ANYGuOlutcDwPkZxY76rNqIwdCq\neTLXA7fDIpT3PZr9b9mIhHfxuyrhARL53qEnqiPD8LcdJFeU50Lb6xZvRoD6VwVH\neBxfBxIAbEVIXLSo/WTZEOI07VMKiT3ZaV/rmgZgUeEpicCzev3XFem30QKBgQCP\nrDQRa9NZ4EP0RglM5ctBl8d3g17+DzazjToFJ/pNrK1YwwTzYQKhRznioEzFIJOt\niEDUI40HpavD/o829vEXo6T8k3mW0rcNe5ydLeofHHuyY6BdwPd9exmyJk1VQDqd\nN0EEm/SmB7TaZTRwEZ8Rpp2gDdYwveTH525azBBcwQKBgGi9rJYAA0MfOL1SpaP6\naAnrhGB6U7dIJJ/l1eAJQKHQbba3FdZLOS7SLhwkUgOg1i+EhfD17UBrb+C84JJz\n9iNbsL9YXp8hy9aohkGLXjjYAlb7Aae7T2pjxH+2nXVRGUySJY8wyrhY7bvu14fJ\nsI0cAzdY07PNwY6IV6RCwGt6\n-----END PRIVATE KEY-----\n",
+  "client_email": "angelpage-subscription-service@angelpage-e-commerce-charity.iam.gserviceaccount.com",
+  "client_id": "107194089223736061891",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/angelpage-subscription-service%40angelpage-e-commerce-charity.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
+}

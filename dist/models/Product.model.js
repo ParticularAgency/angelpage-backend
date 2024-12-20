@@ -58,7 +58,7 @@ const productSchema = new mongoose_1.Schema({
     charity: { type: mongoose_1.Schema.Types.ObjectId, ref: "Charity", required: false },
     status: {
         type: String,
-        enum: ["DRAFT", "LIVE"],
+        enum: ["DRAFT", "LIVE", "REMOVED"],
         default: "DRAFT",
         required: false,
     },

@@ -11,8 +11,9 @@ router.post("/resend-verify-email", auth_controller_1.resendVerificationEmail);
 router.get("/profile/:email", auth_controller_1.fetchUserProfile);
 router.get("/charity-profile/:email", auth_controller_1.fetchCharityProfile);
 router.post("/login", auth_controller_1.loginUser);
-router.post("/request-password-reset", auth_controller_1.requestPasswordReset); // Request password reset email
-router.post("/reset-password", auth_controller_1.resetPassword); // Reset password using the token
+router.post("/request-password-reset", auth_controller_1.requestPasswordReset);
+router.post("/reset-password", auth_controller_1.resetPassword);
+router.get("/check-token", auth_controller_1.checkToken);
 // Protected route
 router.delete("/delete-account", (0, auth_middleware_1.authMiddleware)(), auth_controller_1.deleteAccount); // Authenticated users can delete their account
 exports.default = router;

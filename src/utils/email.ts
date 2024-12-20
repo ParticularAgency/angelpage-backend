@@ -1,46 +1,34 @@
-import sgMail, { MailDataRequired } from "@sendgrid/mail";
+import sgMail from "@sendgrid/mail";
 
 // Initialize SendGrid with the API key
-const sendGridApiKey = process.env.SENDGRID_API_KEY || "";
-if (!sendGridApiKey) {
-	throw new Error("SENDGRID_API_KEY is not set in environment variables.");
-}
-sgMail.setApiKey(sendGridApiKey);
+sgMail.setApiKey(process.env.SENDGRID_API_KEY || "");
 
 interface EmailOptions {
-	to: string; // Recipient email
-	subject: string; // Email subject
-	text?: string; // Plain text content (optional)
-	html?: string; // HTML content (optional)
+	to: string;
+	subject: string;
+	text?: string;
+	html?: string;
 }
 
 // General Send Email Function
-export const sendEmail = async ({
-	to,
-	subject,
-	text,
-	html,
-}: EmailOptions): Promise<void> => {
-	const fromEmail = process.env.SENDGRID_FROM || "noreply@yourdomain.com"; // Verified sender email
-	if (!fromEmail) {
-		throw new Error("SENDGRID_FROM is not set in environment variables.");
-	}
-
-	const msg: MailDataRequired = {
-		from: fromEmail,
+export const sendEmail = async ({ to, subject, text, html }: EmailOptions) => {
+	const msg: sgMail.MailDataRequired = {
+		from: process.env.SENDGRID_FROM || "noreply@yourdomain.com", // Verified sender email
 		to,
 		subject,
-		text: text || "", // Default to an empty string if not provided
-		html: html || "", // Default to an empty string if not provided
+		text: text || "This is a fallback text content.",
+		html: html || "<p>This is a fallback HTML content.</p>",
 	};
 
 	try {
+		console.log("Sending email with payload:", msg);
 		const response = await sgMail.send(msg);
 		console.log(`Email sent successfully to ${to}:`, response[0].statusCode);
-	} catch (error) {
-		
-			console.error("Error sending email:");
-		
+	} catch (error: any) {
+		console.error(
+			"Error sending email:",
+			error.response ? error.response.body.errors : error,
+		);
 		throw new Error("Failed to send email");
 	}
 };
@@ -78,7 +66,7 @@ export const sendWelcomeEmail = async (user: {
 		subject: "Welcome to Our Platform",
 		text: `Thank you for joining, ${
 			user.firstName || "user"
-		}! Please complete your profile...`,
+		}! Please complete your profile.`,
 		html: `<p>Thank you for joining, ${
 			user.firstName || "user"
 		}! <a href="${profileCompletionUrl}">Complete your profile</a>.</p>`,
@@ -166,4 +154,29 @@ export const sendPasswordResetCompletionEmail = async (user: {
 			user.firstName || "user"
 		},</p><p>Your password has been successfully reset. If you did not perform this action, please contact support immediately.</p>`,
 	});
+};
+
+export const sendSubsThanksEmail = async (email: string) => {
+	if (!email) {
+		throw new Error(
+			"Email address is required for subscription thank you email.",
+		);
+	}
+
+	try {
+		await sendEmail({
+			to: email,
+			subject: "Welcome to AngelPage Community!",
+			text: "Thank you for subscribing to AngelPage Community! We're excited to have you.",
+			html: `
+        <p>Thank you for subscribing to <strong>AngelPage Community</strong>!</p>
+        <p>We're thrilled to have you join our community.</p>
+        <p>Stay tuned for updates, exclusive offers, and much more!</p>
+      `,
+		});
+		console.log("Subscription thank you email sent to:", email);
+	} catch (error) {
+		console.error("Error sending subscription thank you email:", error);
+		throw new Error("Failed to send subscription thank you email.");
+	}
 };

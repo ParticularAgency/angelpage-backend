@@ -12,33 +12,26 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendPasswordResetCompletionEmail = exports.sendPasswordResetEmail = exports.sendWelcomeBackEmail = exports.sendVerificationEmail = exports.sendWelcomeEmail = exports.sendEmail = void 0;
+exports.sendSubsThanksEmail = exports.sendPasswordResetCompletionEmail = exports.sendPasswordResetEmail = exports.sendWelcomeBackEmail = exports.sendVerificationEmail = exports.sendWelcomeEmail = exports.sendEmail = void 0;
 const mail_1 = __importDefault(require("@sendgrid/mail"));
 // Initialize SendGrid with the API key
-const sendGridApiKey = process.env.SENDGRID_API_KEY || "";
-if (!sendGridApiKey) {
-    throw new Error("SENDGRID_API_KEY is not set in environment variables.");
-}
-mail_1.default.setApiKey(sendGridApiKey);
+mail_1.default.setApiKey(process.env.SENDGRID_API_KEY || "");
 // General Send Email Function
-const sendEmail = (_a) => __awaiter(void 0, [_a], void 0, function* ({ to, subject, text, html, }) {
-    const fromEmail = process.env.SENDGRID_FROM || "noreply@yourdomain.com"; // Verified sender email
-    if (!fromEmail) {
-        throw new Error("SENDGRID_FROM is not set in environment variables.");
-    }
+const sendEmail = (_a) => __awaiter(void 0, [_a], void 0, function* ({ to, subject, text, html }) {
     const msg = {
-        from: fromEmail,
+        from: process.env.SENDGRID_FROM || "noreply@yourdomain.com", // Verified sender email
         to,
         subject,
-        text: text || "", // Default to an empty string if not provided
-        html: html || "", // Default to an empty string if not provided
+        text: text || "This is a fallback text content.",
+        html: html || "<p>This is a fallback HTML content.</p>",
     };
     try {
+        console.log("Sending email with payload:", msg);
         const response = yield mail_1.default.send(msg);
         console.log(`Email sent successfully to ${to}:`, response[0].statusCode);
     }
     catch (error) {
-        console.error("Error sending email:");
+        console.error("Error sending email:", error.response ? error.response.body.errors : error);
         throw new Error("Failed to send email");
     }
 });
@@ -66,7 +59,7 @@ const sendWelcomeEmail = (user) => __awaiter(void 0, void 0, void 0, function* (
     yield (0, exports.sendEmail)({
         to: user.email,
         subject: "Welcome to Our Platform",
-        text: `Thank you for joining, ${user.firstName || "user"}! Please complete your profile...`,
+        text: `Thank you for joining, ${user.firstName || "user"}! Please complete your profile.`,
         html: `<p>Thank you for joining, ${user.firstName || "user"}! <a href="${profileCompletionUrl}">Complete your profile</a>.</p>`,
     });
 });
@@ -123,3 +116,26 @@ const sendPasswordResetCompletionEmail = (user) => __awaiter(void 0, void 0, voi
     });
 });
 exports.sendPasswordResetCompletionEmail = sendPasswordResetCompletionEmail;
+const sendSubsThanksEmail = (email) => __awaiter(void 0, void 0, void 0, function* () {
+    if (!email) {
+        throw new Error("Email address is required for subscription thank you email.");
+    }
+    try {
+        yield (0, exports.sendEmail)({
+            to: email,
+            subject: "Welcome to AngelPage Community!",
+            text: "Thank you for subscribing to AngelPage Community! We're excited to have you.",
+            html: `
+        <p>Thank you for subscribing to <strong>AngelPage Community</strong>!</p>
+        <p>We're thrilled to have you join our community.</p>
+        <p>Stay tuned for updates, exclusive offers, and much more!</p>
+      `,
+        });
+        console.log("Subscription thank you email sent to:", email);
+    }
+    catch (error) {
+        console.error("Error sending subscription thank you email:", error);
+        throw new Error("Failed to send subscription thank you email.");
+    }
+});
+exports.sendSubsThanksEmail = sendSubsThanksEmail;

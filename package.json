@@ -17,6 +17,7 @@
     "dotenv": "^16.4.7",
     "express": "^4.21.1",
     "express-validator": "^7.2.0",
+    "googleapis": "^144.0.0",
     "jsonwebtoken": "^9.0.2",
     "mailgun-js": "^0.6.7",
     "mongodb": "^6.9.0",
@@ -26,7 +27,9 @@
     "next-auth": "^4.24.10",
     "nodemailer": "^6.9.16",
     "nodemailer-sendgrid": "^1.0.3",
-    "uuid": "^11.0.3"
+    "swiper": "^11.1.15",
+    "uuid": "^11.0.3",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",

@@ -107,8 +107,12 @@ const userSchema = new mongoose_1.Schema({
     addresses: [addressSchema],
     payments: [paymentMethodSchema],
     listedProducts: [{ type: mongoose_1.Schema.Types.ObjectId, ref: "Product" }],
-    favoriteProducts: [{ type: mongoose_1.Schema.Types.ObjectId, ref: "Product" }],
-    favoriteCharities: [{ type: mongoose_1.Schema.Types.ObjectId, ref: "Charity" }],
+    favoriteProducts: [
+        { type: mongoose_1.default.Schema.Types.ObjectId, ref: "Product" },
+    ],
+    favoriteCharities: [
+        { type: mongoose_1.default.Schema.Types.ObjectId, ref: "Charity" },
+    ],
     lastWelcomeBackEmailSent: { type: Date },
     verificationCode: { type: String },
     verificationExpiry: { type: Date },

@@ -55,7 +55,7 @@ export const getProductOnCart = async (req: Request, res: Response) => {
 				path: "items.productId",
 				populate: {
 					path: "charity",
-					select: "charityName charityID profileImage",
+					select: "charityName charityID profileImage  addresses",
 				},
 			});
 

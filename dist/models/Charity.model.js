@@ -113,8 +113,12 @@ const charitySchema = new mongoose_1.Schema({
     description: { type: String, required: false },
     storefrontId: { type: String, unique: true, required: false },
     listedProducts: [{ type: mongoose_1.Schema.Types.ObjectId, ref: "Product" }],
-    favoriteProducts: [{ type: mongoose_1.Schema.Types.ObjectId, ref: "Product" }],
-    favoriteCharities: [{ type: mongoose_1.Schema.Types.ObjectId, ref: "Charity" }],
+    favoriteProducts: [
+        { type: mongoose_1.default.Schema.Types.ObjectId, ref: "Product" },
+    ],
+    favoriteCharities: [
+        { type: mongoose_1.default.Schema.Types.ObjectId, ref: "Charity" },
+    ],
     lastWelcomeBackEmailSent: Date,
     verificationCode: { type: String },
     verificationExpiry: { type: Date },

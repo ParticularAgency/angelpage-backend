@@ -65,7 +65,7 @@ const getProductOnCart = (req, res) => __awaiter(void 0, void 0, void 0, functio
             path: "items.productId",
             populate: {
                 path: "charity",
-                select: "charityName charityID profileImage",
+                select: "charityName charityID profileImage  addresses",
             },
         });
         if (!cart) {

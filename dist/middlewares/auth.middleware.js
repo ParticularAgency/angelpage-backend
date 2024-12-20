@@ -9,31 +9,27 @@ const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 const authMiddleware = (roles) => {
     return (req, res, next) => {
         const authHeader = req.header("Authorization");
-        // Check if the Authorization header exists and starts with "Bearer"
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
             res.status(401).json({ message: "Access denied. No token provided." });
-            return; // Ensure no further middleware execution
+            return;
         }
-        // Extract token from the Authorization header
         const token = authHeader.replace("Bearer ", "");
         try {
-            // Verify the token and decode its payload
+            // Verify token and check expiration
             const decoded = jsonwebtoken_1.default.verify(token, JWT_SECRET);
-            // Attach the user data to the request object
-            req.user = { userId: decoded.userId, role: decoded.role };
-            // Check if roles are specified and whether the user's role matches
+            req.user = { userId: decoded.userId, role: decoded.role, };
+            // Role-based access check
             if (roles && !roles.includes(decoded.role)) {
                 res
                     .status(403)
                     .json({ message: "Access denied: insufficient permissions." });
-                return; // Ensure no further middleware execution
+                return;
             }
-            // Call the next middleware in the chain
             next();
         }
         catch (error) {
             console.error("JWT Verification Error:", error);
-            res.status(400).json({ message: "Invalid or expired token." });
+            res.status(401).json({ message: "Invalid or expired token." });
         }
     };
 };

@@ -126,52 +126,416 @@ export const createProduct = async (req, res) => {
 	}
 };
 
-// Edit a product
-export const editProduct = async (req, res) => {
-	const { productId } = req.params;
-	const updates = req.body;
+
+
+// Fetch all products (public access)
+export const getAllProducts = async (req, res) => {
+	const { isArchived , status} = req.query; // Optional query to handle archived state
 
 	try {
-		const updatedProduct = await Product.findByIdAndUpdate(productId, updates, {
-			new: true,
-		});
-		if (!updatedProduct) {
+		const query = {
+			...(status && { status }),
+		}; // Initialize query object
+		if (isArchived !== undefined) {
+			query.isArchived = isArchived === "true"; // Handle archived filter
+		} else {
+			query.isArchived = false; // Default to showing only active products
+		}
+
+		const products = await Product.find(query)
+			.populate("seller", "firstName lastName profileImage addresses charityName")
+			.populate("charity", "charityName charityID profileImage addresses")
+			.sort({ createdAt: -1 }); // Sort by creation date (newest first)
+
+		if (!products || products.length === 0) {
+			return res.status(404).json({ message: "No products found." });
+		}
+		const productsWithAddress = products.map(product => ({
+			...product.toObject(),
+			seller: {
+				firstName: product.seller?.firstName,
+				lastName: product.seller?.lastName,
+				profileImage: product.seller?.profileImage,
+				address: product.seller?.addresses?.[0], // Include default address
+			},
+			charity: {
+				charityName: product.charity?.charityName,
+				charityID: product.charity?.charityID,
+				profileImage: product.charity?.profileImage,
+				address: product.charity?.addresses?.[0],
+			},
+		}));
+
+		return res.status(200).json({ products: productsWithAddress });
+	} catch (error) {
+		console.error("Error fetching all products:", error);
+		return res.status(500).json({ message: "Failed to fetch all products." });
+	}
+};
+
+// Fetch products by category (public access)
+export const getProductsByCategory = async (req, res) => {
+	const { category } = req.params; 
+	const { isArchived, status } = req.query; 
+
+	try {
+		const query = {
+			category,
+			...(isArchived !== undefined && { isArchived: isArchived === 'true' }),
+			...(status && { status }),
+		};
+
+		const products = await Product.find(query)
+			.populate("seller", "firstName lastName userName profileImage  addresses charityName")
+			.populate("charity", "charityName charityID profileImage   addresses")
+			.sort({ createdAt: -1 }); // Sort products by the latest creation date
+
+		if (!products || products.length === 0) {
+			return res.status(404).json({ message: "No products found for this category." });
+		}
+		const productsWithAddress = products.map(product => ({
+			...product.toObject(),
+			seller: {
+				firstName: product.seller?.firstName,
+				lastName: product.seller?.lastName,
+				profileImage: product.seller?.profileImage,
+				address: product.seller?.addresses?.[0], // Include default address
+			},
+			charity: {
+				charityName: product.charity?.charityName,
+				charityID: product.charity?.charityID,
+				profileImage: product.charity?.profileImage,
+				address: product.charity?.addresses?.[0],
+			},
+		}));
+		return res.status(200).json({ products: productsWithAddress });
+	} catch (error) {
+		console.error("Error fetching products by category:", error);
+		return res.status(500).json({ message: "Failed to fetch products by category." });
+	}
+};
+
+// Fetch products by category or subcategory (public access)
+export const getCategoryProducts = async (req, res) => {
+	const { category, subcategory } = req.query; // Extract category and subcategory from query parameters
+	const { isArchived , status} = req.query; // Optional query to handle archived state
+
+	try {
+		const query = {
+			...(status && { status }),
+		}; // Initialize query object
+		if (category) query.category = category; // Add category to the query if provided
+		if (subcategory) query.subcategory = subcategory; // Add subcategory to the query if provided
+		if (isArchived !== undefined) {
+			query.isArchived = isArchived === "true"; // Handle archived filter
+		} else {
+			query.isArchived = false; // Default to showing only active products
+		}
+
+		const products = await Product.find(query)
+			.populate("seller", "firstName lastName userName profileImage  addresses charityName")
+			.populate("charity", "charityName charityID profileImage   addresses")
+			.sort({ createdAt: -1 }); // Sort by creation date (newest first)
+
+		if (!products || products.length === 0) {
+			return res
+				.status(404)
+				.json({ message: "No products found for the selected category." });
+		}
+		const productsWithAddress = products.map(product => ({
+			...product.toObject(),
+			seller: {
+				firstName: product.seller?.firstName,
+				lastName: product.seller?.lastName,
+				profileImage: product.seller?.profileImage,
+				address: product.seller?.addresses?.[0], // Include default address
+			},
+			charity: {
+				charityName: product.charity?.charityName,
+				charityID: product.charity?.charityID,
+				profileImage: product.charity?.profileImage,
+				address: product.charity?.addresses?.[0],
+			},
+		}));
+
+		return res.status(200).json({ products: productsWithAddress });
+	} catch (error) {
+		console.error("Error fetching category products:", error);
+		return res.status(500).json({ message: "Failed to fetch category products." });
+	}
+};
+
+// Fetch latest 10 products (public access)
+export const getProductsByLatest = async (_req, res) => {
+	try {
+		const products = await Product.find({ isArchived: false, status: "LIVE" })
+			.populate("seller", "firstName lastName userName profileImage  addresses charityName")
+			.populate("charity", "charityName charityID profileImage   addresses")
+			.sort({ createdAt: -1 })
+			.limit(10);
+
+		if (!products || products.length === 0) {
+			return res.status(404).json({ message: "No products found." });
+		} 
+
+		const productsWithAddress = products.map(product => ({
+			...product.toObject(),
+			seller: {
+				firstName: product.seller?.firstName,
+				lastName: product.seller?.lastName,
+				profileImage: product.seller?.profileImage,
+				address: product.seller?.addresses?.[0],
+			},
+			charity: {
+				charityName: product.charity?.charityName,
+				charityID: product.charity?.charityID,
+				profileImage: product.charity?.profileImage,
+				address: product.charity?.addresses?.[0],
+			},
+		}));
+
+		return res.status(200).json({ products: productsWithAddress });
+	} catch (error) {
+		console.error("Error fetching latest products:", error);
+		return res.status(500).json({ message: "Failed to fetch latest products." });
+	}
+};
+
+// Controller for fetching related products
+export const getRelatedProducts = async (req, res) => {
+	const { category } = req.query;
+
+	try {
+		const products = await Product.find({ category, isArchived: false, status: "LIVE" })
+			.sort({ createdAt: -1 })
+			.limit(10)
+			.populate('charity', 'charityName profileImage');
+
+		if (!products.length) {
+			return res.status(404).json({ message: 'No related products found.' });
+		}
+
+		const productsWithAddress = products.map(product => ({
+			...product.toObject(),
+			seller: {
+				firstName: product.seller?.firstName,
+				lastName: product.seller?.lastName,
+				profileImage: product.seller?.profileImage,
+				address: product.seller?.addresses?.[0], // Include default address
+			},
+			charity: {
+				charityName: product.charity?.charityName,
+				charityID: product.charity?.charityID,
+				profileImage: product.charity?.profileImage,
+				address: product.charity?.addresses?.[0],
+			},
+		}));
+
+		return res.status(200).json({ products: productsWithAddress });
+	} catch (err) {
+		console.error('Error fetching related products:', err);
+		res.status(500).json({ message: 'Failed to fetch related products.' });
+	}
+};
+
+
+
+// Get Product Details (Public Access)
+export const getProductDetails = async (req, res) => {
+	const { productId } = req.params;
+
+	try {
+		// Fetch product details by ID, including populated fields for seller and charity
+		const product = await Product.findById(productId)
+			.populate("seller", "firstName lastName profileImage  addresses")
+			.populate("charity", "charityName charityID storefrontId profileImage  addresses");
+
+		if (!product) {
 			return res.status(404).json({ message: "Product not found." });
 		}
 
+
+
+		// Return product details with charity and seller info
 		return res.status(200).json({
-			message: "Product updated successfully.",
-			product: updatedProduct,
+			product: {
+				id: product._id,
+				name: product.name,
+				additionalInfo: product.additionalInfo,
+				price: product.price,
+				charityProfit: product.charityProfit,
+				description: product.additionalInfo,
+				images: product.images,
+				category: product.category,
+				subcategory: product.subcategory,
+				condition: product.condition,
+				brand: product.brand,
+				material: product.material,
+				color: product.color,
+				size: product.size,
+				status: product.status,
+				dimensions: {
+					height: product.dimensions?.height || null,
+					width: product.dimensions?.width || null,
+					depth: product.dimensions?.depth || null,
+				},
+				createdAt: product.createdAt,
+				charity: {
+					charityName: product.charity?.charityName,
+					charityID: product.charity?.charityID,
+					storefrontId: product.charity?.storefrontId,
+					profileImage: product.charity?.profileImage,
+					address: product.charity?.addresses?.[0],
+				},
+				seller: {
+					firstName: product.seller?.firstName,
+					lastName: product.seller?.lastName,
+					profileImage: product.seller?.profileImage,
+					address: product.seller?.addresses?.[0],
+				},
+			},
 		});
 	} catch (error) {
-		console.error("Error editing product:", error);
-		return res.status(500).json({ message: "Failed to update product." });
+		console.error("Error fetching product details:", error);
+		return res
+			.status(500)
+			.json({ message: "Failed to fetch product details." });
 	}
 };
+
+
+
+export const getListingProducts = async (req, res) => {
+	const { userId, role } = req.user; 
+	const { status, isArchived } = req.query; 
+
+	try {
+		const query = {
+			seller: userId, 
+		};
+
+		if (status) query.status = status; // Filter by status (e.g., DRAFT or LIVE)
+		if (isArchived !== undefined) query.isArchived = isArchived === "true"; 
+
+
+		if (role === "CHARITY") {
+			query.$or = [{ seller: userId }, { charity: userId }];
+		}
+
+		const products = await Product.find(query)
+			.populate("seller", "firstName lastName userName profileImage  addresses")
+			.populate("charity", "charityName charityID profileImage addresses")
+			.sort({ createdAt: -1 });
+
+		const productsWithAddress = products.map(product => ({
+			...product.toObject(),
+			seller: {
+				firstName: product.seller?.firstName,
+				lastName: product.seller?.lastName,
+				profileImage: product.seller?.profileImage,
+				address: product.seller?.addresses?.[0], 
+			},
+		}));
+
+		return res.status(200).json({ products: productsWithAddress });
+	} catch (error) {
+		console.error("Error fetching user products:", error);
+		res.status(500).json({ message: "Failed to fetch user products." });
+	}
+};
+
+
+
+// Edit a product
+export const editProduct = async (req, res) => {
+	try {
+		const { productId } = req.params;
+		const userId = req.user?.userId;
+		const isCharity = req.user?.role === "CHARITY";
+
+		const product = await Product.findById(productId);
+
+		if (!product) {
+			return res.status(404).json({ message: "Product not found" });
+		}
+
+		// Verify ownership
+		const isOwner = isCharity
+			? product.charity?.toString() === userId
+			: product.seller?.toString() === userId;
+
+		if (!isOwner) {
+			return res.status(403).json({ message: "Unauthorized to edit this product" });
+		}
+
+		// Allow edits for `DRAFT` or `LIVE` only
+		if (product.isArchived) {
+			return res.status(400).json({ message: "Cannot edit archived products" });
+		}
+
+		Object.assign(product, req.body);
+		await product.save();
+
+		res.status(200).json({ message: "Product updated successfully", product });
+	} catch (error) {
+		console.error("Error editing product:", error);
+		res.status(500).json({ message: "Failed to edit product" });
+	}
+};
+
 
 // Archive (soft delete) a product
 export const archiveProduct = async (req, res) => {
-	const { productId } = req.params;
-
 	try {
-		const archivedProduct = await Product.findByIdAndUpdate(
-			productId,
-			{ isArchived: true },
-			{ new: true },
-		);
-		if (!archivedProduct) {
-			return res.status(404).json({ message: "Product not found." });
+		const { productId } = req.params;
+		const userId = req.user?.userId;
+		const isCharity = req.user?.role === "CHARITY";
+
+		const product = await Product.findById(productId);
+
+		if (!product) {
+			return res.status(404).json({ message: "Product not found" });
 		}
 
-		return res.status(200).json({
-			message: "Product archived successfully.",
-			product: archivedProduct,
-		});
+		const isOwner = isCharity
+			? product.charity?.toString() === userId
+			: product.seller?.toString() === userId;
+
+		if (!isOwner) {
+			return res.status(403).json({ message: "Unauthorized to archive this product" });
+		}
+
+		product.status = "REMOVED";
+		product.isArchived = true;
+
+		await product.save();
+
+		res.status(200).json({ message: "Product archived successfully", product });
 	} catch (error) {
 		console.error("Error archiving product:", error);
-		return res.status(500).json({ message: "Failed to archive product." });
+		res.status(500).json({ message: "Failed to archive product" });
 	}
 };
+
+
+export const getDraftProducts = async (req, res) => {
+	try {
+		const userId = req.user?.userId;
+		const isCharity = req.user?.role === "CHARITY";
+
+		const query = isCharity
+			? { charity: userId, status: "DRAFT", isArchived: false }
+			: { seller: userId, status: "DRAFT", isArchived: false };
+
+		const products = await Product.find(query);
+
+		res.status(200).json({ products });
+	} catch (error) {
+		console.error("Error fetching draft products:", error);
+		res.status(500).json({ message: "Failed to fetch draft products" });
+	}
+};
+
 
 // Permanently delete a product
 export const deleteProduct = async (req, res) => {
@@ -200,319 +564,77 @@ export const deleteProduct = async (req, res) => {
 	}
 };
 
-// Fetch all products (public access)
-export const getAllProducts = async (req, res) => {
-	const { isArchived } = req.query; // Optional query to handle archived state
-
-	try {
-		const query = {}; // Initialize query object
-		if (isArchived !== undefined) {
-			query.isArchived = isArchived === "true"; // Handle archived filter
-		} else {
-			query.isArchived = false; // Default to showing only active products
-		}
-
-		const products = await Product.find(query)
-			.populate("seller", "firstName lastName userName profileImage addresses")
-			.populate("charity", "charityName charityID profileImage")
-			.sort({ createdAt: -1 }); // Sort by creation date (newest first)
-
-		if (!products || products.length === 0) {
-			return res.status(404).json({ message: "No products found." });
-		}
-		const productsWithAddress = products.map(product => ({
-			...product.toObject(),
-			seller: {
-				firstName: product.seller?.firstName,
-				lastName: product.seller?.lastName,
-				profileImage: product.seller?.profileImage,
-				address: product.seller?.addresses?.[0], // Include default address
-			},
-		}));
-
-		return res.status(200).json({ products: productsWithAddress });
-	} catch (error) {
-		console.error("Error fetching all products:", error);
-		return res.status(500).json({ message: "Failed to fetch all products." });
-	}
-};
-
-// Fetch products by category (public access)
-export const getProductsByCategory = async (req, res) => {
-	const { category } = req.params; // Extract category from the URL params
-	const { isArchived } = req.query; // Optional query to handle archived state
-
-	try {
-		const query = { category }; // Base query to filter by category
-		if (isArchived !== undefined) {
-			query.isArchived = isArchived === "true"; // Handle archived filter
-		} else {
-			query.isArchived = false; // Default to showing only active products
-		}
-
-		const products = await Product.find(query)
-			.populate("seller", "firstName lastName userName profileImage  addresses")
-			.populate("charity", "charityName charityID profileImage")
-			.sort({ createdAt: -1 }); // Sort products by the latest creation date
-
-		if (!products || products.length === 0) {
-			return res.status(404).json({ message: "No products found for this category." });
-		}
-		const productsWithAddress = products.map(product => ({
-			...product.toObject(),
-			seller: {
-				firstName: product.seller?.firstName,
-				lastName: product.seller?.lastName,
-				profileImage: product.seller?.profileImage,
-				address: product.seller?.addresses?.[0], // Include default address
-			},
-		}));
-
-		return res.status(200).json({ products: productsWithAddress });
-	} catch (error) {
-		console.error("Error fetching products by category:", error);
-		return res.status(500).json({ message: "Failed to fetch products by category." });
-	}
-};
-
-// Fetch products by category or subcategory (public access)
-export const getCategoryProducts = async (req, res) => {
-	const { category, subcategory } = req.query; // Extract category and subcategory from query parameters
-	const { isArchived } = req.query; // Optional query to handle archived state
-
-	try {
-		const query = {}; // Initialize query object
-		if (category) query.category = category; // Add category to the query if provided
-		if (subcategory) query.subcategory = subcategory; // Add subcategory to the query if provided
-		if (isArchived !== undefined) {
-			query.isArchived = isArchived === "true"; // Handle archived filter
-		} else {
-			query.isArchived = false; // Default to showing only active products
-		}
-
-		const products = await Product.find(query)
-			.populate("seller", "firstName lastName userName profileImage addresses")
-			.populate("charity", "charityName charityID profileImage")
-			.sort({ createdAt: -1 }); // Sort by creation date (newest first)
-
-		if (!products || products.length === 0) {
-			return res
-				.status(404)
-				.json({ message: "No products found for the selected category." });
-		}
-		const productsWithAddress = products.map(product => ({
-			...product.toObject(),
-			seller: {
-				firstName: product.seller?.firstName,
-				lastName: product.seller?.lastName,
-				profileImage: product.seller?.profileImage,
-				address: product.seller?.addresses?.[0], // Include default address
-			},
-		}));
-
-		return res.status(200).json({ products: productsWithAddress });
-	} catch (error) {
-		console.error("Error fetching category products:", error);
-		return res.status(500).json({ message: "Failed to fetch category products." });
-	}
-};
-
-// Fetch latest 10 products (public access)
-export const getProductsByLatest = async (_req, res) => {
-	try {
-		const products = await Product.find({ isArchived: false })
-			.populate("seller", "firstName lastName userName profileImage addresses")
-			.populate("charity", "charityName charityID profileImage")
-			.sort({ createdAt: -1 })
-			.limit(10);
-
-		if (!products || products.length === 0) {
-			return res.status(404).json({ message: "No products found." });
-		} 
-
-		const productsWithAddress = products.map(product => ({
-			...product.toObject(),
-			seller: {
-				firstName: product.seller?.firstName,
-				lastName: product.seller?.lastName,
-				profileImage: product.seller?.profileImage,
-				address: product.seller?.addresses?.[0], // Include default address
-			},
-		}));
-
-		return res.status(200).json({ products: productsWithAddress });
-	} catch (error) {
-		console.error("Error fetching latest products:", error);
-		return res.status(500).json({ message: "Failed to fetch latest products." });
-	}
-};
-
-// Controller for fetching related products
-export const getRelatedProducts = async (req, res) => {
-	const { category } = req.query;
-
-	try {
-		const products = await Product.find({ category, isArchived: false })
-			.sort({ createdAt: -1 })
-			.limit(10)
-			.populate('charity', 'charityName profileImage');
-
-		if (!products.length) {
-			return res.status(404).json({ message: 'No related products found.' });
-		}
-
-		const productsWithAddress = products.map(product => ({
-			...product.toObject(),
-			seller: {
-				firstName: product.seller?.firstName,
-				lastName: product.seller?.lastName,
-				profileImage: product.seller?.profileImage,
-				address: product.seller?.addresses?.[0], // Include default address
-			},
-		}));
-
-		return res.status(200).json({ products: productsWithAddress });
-	} catch (err) {
-		console.error('Error fetching related products:', err);
-		res.status(500).json({ message: 'Failed to fetch related products.' });
-	}
-};
-
 
 // Get role-based product listings (USER or CHARITY)
 export const getRoleBasedListings = async (req, res) => {
 	const { userId, role } = req.user;
+	const { status, isArchived } = req.query;
 
 	try {
-		let products;
+		const query = {
+			isArchived: isArchived === "true" ? true : false,
+		};
 
 		if (role === "USER") {
-			products = await Product.find({ seller: userId, isArchived: false });
+			query.seller = userId;
 		} else if (role === "CHARITY") {
-			products = await Product.find({
-				$or: [{ seller: userId }, { charity: userId }],
-				isArchived: false,
-			});
+			query.$or = [{ charity: userId }, { seller: userId }];
 		} else {
 			return res.status(403).json({ message: "Access denied. Invalid role." });
 		}
 
-		const productsWithAddress = products.map(product => ({
-			...product.toObject(),
-			seller: {
-				firstName: product.seller?.firstName,
-				lastName: product.seller?.lastName,
-				profileImage: product.seller?.profileImage,
-				address: product.seller?.addresses?.[0], // Include default address
-			},
-		}));
-
-		return res.status(200).json({ products: productsWithAddress });
-	} catch (error) {
-		console.error("Error fetching role-based listings:", error);
-		return res.status(500).json({ message: "Failed to fetch listings." });
-	}
-};
-
-// Get Product Details (Public Access)
-export const getProductDetails = async (req, res) => {
-	const { productId } = req.params;
-
-	try {
-		// Fetch product details by ID, including populated fields for seller and charity
-		const product = await Product.findById(productId)
-			.populate("seller", "firstName lastName profileImage  addresses")
-			.populate("charity", "charityName charityID storefrontId profileImage");
-
-		if (!product) {
-			return res.status(404).json({ message: "Product not found." });
-		}
-
-
-
-		// Return product details with charity and seller info
-		return res.status(200).json({
-			product: {
-				id: product._id,
-				name: product.name,
-				additionalInfo: product.additionalInfo,
-				price: product.price,
-				charityProfit: product.charityProfit,
-				description: product.additionalInfo,
-				images: product.images,
-				category: product.category,
-				subcategory: product.subcategory,
-				condition: product.condition,
-				brand: product.brand,
-				material: product.material,
-				color: product.color,
-				size: product.size,
-				dimensions: {
-					height: product.dimensions?.height || null,
-					width: product.dimensions?.width || null,
-					depth: product.dimensions?.depth || null,
-				},
-				createdAt: product.createdAt,
-				charity: {
-					charityName: product.charity?.charityName,
-					charityID: product.charity?.charityID,
-					storefrontId: product.charity?.storefrontId,
-					profileImage: product.charity?.profileImage,
-				},
-				seller: {
-					firstName: product.seller?.firstName,
-					lastName: product.seller?.lastName,
-					profileImage: product.seller?.profileImage,
-					address: product.seller?.addresses?.[0],
-				},
-			},
-		});
-	} catch (error) {
-		console.error("Error fetching product details:", error);
-		return res
-			.status(500)
-			.json({ message: "Failed to fetch product details." });
-	}
-};
-
-
-
-export const getListingProducts = async (req, res) => {
-	const { userId, role } = req.user; // Extract userId and role from the authenticated request
-	const { status, isArchived } = req.query; // Optional filters for status and archived state
-
-	try {
-		const query = {
-			seller: userId, // Only fetch products posted by the current user/charity
-		};
-
-		if (status) query.status = status; // Filter by status (e.g., DRAFT or LIVE)
-		if (isArchived !== undefined) query.isArchived = isArchived === "true"; // Handle archived filter
-
-		// For CHARITY, also include products where the charity is explicitly associated
-		if (role === "CHARITY") {
-			query.$or = [{ seller: userId }, { charity: userId }];
+		if (status) {
+			query.status = status; // Filter by status if provided
 		}
 
 		const products = await Product.find(query)
-			.populate("seller", "firstName lastName userName profileImage  addresses")
-			.populate("charity", "charityName charityID profileImage")
-			.sort({ createdAt: -1 }); // Sort by latest created products
+			.populate("seller", "firstName lastName profileImage addresses")
+			.populate("charity", "charityName profileImage addresses")
+			.sort({ createdAt: -1 });
 
 		const productsWithAddress = products.map(product => ({
 			...product.toObject(),
+			id: product._id,
+			name: product.name,
+			additionalInfo: product.additionalInfo,
+			price: product.price,
+			charityProfit: product.charityProfit,
+			description: product.additionalInfo,
+			selectedCharityName: product.selectedCharityName,
+            selectedCharityId: product.selectedCharityId, 
+			images: product.images,
+			category: product.category,
+			subcategory: product.subcategory,
+			condition: product.condition,
+			brand: product.brand,
+			material: product.material,
+			color: product.color,
+			size: product.size,
+			status: product.status,
+			dimensions: {
+				height: product.dimensions?.height || null,
+				width: product.dimensions?.width || null,
+				depth: product.dimensions?.depth || null,
+			},
+			createdAt: product.createdAt,
 			seller: {
 				firstName: product.seller?.firstName,
 				lastName: product.seller?.lastName,
 				profileImage: product.seller?.profileImage,
 				address: product.seller?.addresses?.[0], // Include default address
 			},
+			charity: {
+				charityName: product.charity?.charityName,
+				charityID: product.charity?.charityID,
+				profileImage: product.charity?.profileImage,
+				address: product.charity?.addresses?.[0],
+			},
 		}));
 
 		return res.status(200).json({ products: productsWithAddress });
 	} catch (error) {
-		console.error("Error fetching user products:", error);
-		res.status(500).json({ message: "Failed to fetch user products." });
+		console.error("Error fetching listings:", error);
+		res.status(500).json({ message: "Failed to fetch listings." });
 	}
 };
 

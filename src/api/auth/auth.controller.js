@@ -17,7 +17,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
 // Utility to generate a token
 const generateToken = (userId, role) => {
-  return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: "18m" });
+  return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: "30m" });
 };
 
 
@@ -91,7 +91,7 @@ export const registerUser = async (req, res) => {
 		const token = jwt.sign(
 			{ userId: newUser._id, role: newUser.role },
 			JWT_SECRET,
-			{ expiresIn: "18m" },
+			{ expiresIn: "15m" },
 		);
 
 		res.status(201).json({
@@ -502,5 +502,32 @@ export const fetchCharityProfile = async (req, res) => {
 	} catch (error) {
 		console.error("Error fetching user data:", error);
 		res.status(500).json({ message: "Error fetching user data." });
+	}
+};
+
+// Endpoint to check if the token is valid
+export const checkToken = (req, res) => {
+	const authHeader = req.header("Authorization");
+
+	if (!authHeader || !authHeader.startsWith("Bearer ")) {
+		return res.status(401).json({ message: "Access denied. No token provided." });
+	}
+
+	const token = authHeader.replace("Bearer ", "");
+
+	try {
+		// Verify the token
+		const decoded = jwt.verify(token, JWT_SECRET);
+
+		// Check if token has expired (optional, since jwt.verify does this)
+		if (Date.now() >= decoded.exp * 1000) {
+			return res.status(401).json({ message: "Token has expired." });
+		}
+
+		// Token is valid, send success response
+		return res.status(200).json({ message: "Token is valid." });
+	} catch (error) {
+		console.error("Token validation error:", error.message);
+		return res.status(401).json({ message: "Invalid or expired token." });
 	}
 };

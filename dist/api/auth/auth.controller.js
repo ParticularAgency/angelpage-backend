@@ -23,7 +23,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.fetchCharityProfile = exports.fetchUserProfile = exports.deleteAccount = exports.resetPassword = exports.requestPasswordReset = exports.loginUser = exports.resendVerificationEmail = exports.verifyEmail = exports.registerUser = void 0;
+exports.checkToken = exports.fetchCharityProfile = exports.fetchUserProfile = exports.deleteAccount = exports.resetPassword = exports.requestPasswordReset = exports.loginUser = exports.resendVerificationEmail = exports.verifyEmail = exports.registerUser = void 0;
 // import { Request, Response } from "express";
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
@@ -34,7 +34,7 @@ const email_1 = require("../../utils/email");
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 // Utility to generate a token
 const generateToken = (userId, role) => {
-    return jsonwebtoken_1.default.sign({ userId, role }, JWT_SECRET, { expiresIn: "18m" });
+    return jsonwebtoken_1.default.sign({ userId, role }, JWT_SECRET, { expiresIn: "30m" });
 };
 // Utility to compare passwords
 const comparePassword = (password, hashedPassword) => __awaiter(void 0, void 0, void 0, function* () {
@@ -89,7 +89,7 @@ const registerUser = (req, res) => __awaiter(void 0, void 0, void 0, function* (
             userId: newUser._id.toString(),
             role: newUser.role,
         });
-        const token = jsonwebtoken_1.default.sign({ userId: newUser._id, role: newUser.role }, JWT_SECRET, { expiresIn: "18m" });
+        const token = jsonwebtoken_1.default.sign({ userId: newUser._id, role: newUser.role }, JWT_SECRET, { expiresIn: "15m" });
         res.status(201).json({
             message: "Registration successful. Please verify your email.",
             user: newUser,
@@ -455,3 +455,26 @@ const fetchCharityProfile = (req, res) => __awaiter(void 0, void 0, void 0, func
     }
 });
 exports.fetchCharityProfile = fetchCharityProfile;
+// Endpoint to check if the token is valid
+const checkToken = (req, res) => {
+    const authHeader = req.header("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ message: "Access denied. No token provided." });
+    }
+    const token = authHeader.replace("Bearer ", "");
+    try {
+        // Verify the token
+        const decoded = jsonwebtoken_1.default.verify(token, JWT_SECRET);
+        // Check if token has expired (optional, since jwt.verify does this)
+        if (Date.now() >= decoded.exp * 1000) {
+            return res.status(401).json({ message: "Token has expired." });
+        }
+        // Token is valid, send success response
+        return res.status(200).json({ message: "Token is valid." });
+    }
+    catch (error) {
+        console.error("Token validation error:", error.message);
+        return res.status(401).json({ message: "Invalid or expired token." });
+    }
+};
+exports.checkToken = checkToken;

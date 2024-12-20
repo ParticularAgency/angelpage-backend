@@ -14,6 +14,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getFavoriteCount = exports.getFavorites = exports.toggleFavorite = void 0;
 const Favorite_model_1 = __importDefault(require("../../models/Favorite.model"));
+const Product_model_1 = __importDefault(require("../../models/Product.model")); // Ensure Product model is imported
+const Charity_model_1 = __importDefault(require("../../models/Charity.model")); // Ensure Charity model is imported
 // Toggle favorite (add/remove)
 const toggleFavorite = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
@@ -45,9 +47,7 @@ const toggleFavorite = (req, res) => __awaiter(void 0, void 0, void 0, function*
         yield favorite.save();
         // Return updated favorite items to keep frontend in sync
         const updatedFavorites = yield Favorite_model_1.default.findOne({ user: userId });
-        res
-            .status(200)
-            .json({
+        res.status(200).json({
             message: "Favorite toggled successfully",
             favorite: updatedFavorites,
         });
@@ -76,13 +76,43 @@ const getFavorites = (req, res) => __awaiter(void 0, void 0, void 0, function* (
                 .status(200)
                 .json({ favoriteProducts: [], favoriteCharities: [] });
         }
-        const favoriteProducts = favorite.items
+        const productIds = favorite.items
             .filter(item => item.type === "Product")
             .map(item => item.itemId);
-        const favoriteCharities = favorite.items
+        const charityIds = favorite.items
             .filter(item => item.type === "Charity")
             .map(item => item.itemId);
-        res.status(200).json({ favoriteProducts, favoriteCharities });
+        // Fetch product details with populated fields
+        const favoriteProducts = yield Product_model_1.default.find({ _id: { $in: productIds } })
+            .select("name price images category subcategory dimensions status brand material size seller charity")
+            .populate("seller", "firstName lastName profileImage addresses")
+            .populate("charity", "charityName charityID storefrontId listedProducts profileImage addresses")
+            .sort({ createdAt: -1 });
+        // Fetch charity details with populated fields
+        const favoriteCharities = yield Charity_model_1.default.find({ _id: { $in: charityIds } })
+            .select("charityName charityID description storefrontId profileImage addresses")
+            .populate("listedProducts")
+            .sort({ createdAt: -1 });
+        // Add address and other details for each product
+        const itemsWithAddress = favoriteProducts.map(item => {
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+            return (Object.assign(Object.assign({}, item.toObject()), { seller: {
+                    firstName: (_a = item.seller) === null || _a === void 0 ? void 0 : _a.firstName,
+                    lastName: (_b = item.seller) === null || _b === void 0 ? void 0 : _b.lastName,
+                    profileImage: (_c = item.seller) === null || _c === void 0 ? void 0 : _c.profileImage,
+                    address: (_e = (_d = item.seller) === null || _d === void 0 ? void 0 : _d.addresses) === null || _e === void 0 ? void 0 : _e[0], // Use the first address
+                }, charity: {
+                    charityName: (_f = item.charity) === null || _f === void 0 ? void 0 : _f.charityName,
+                    charityID: (_g = item.charity) === null || _g === void 0 ? void 0 : _g.charityID,
+                    profileImage: (_h = item.charity) === null || _h === void 0 ? void 0 : _h.profileImage,
+                    address: (_k = (_j = item.charity) === null || _j === void 0 ? void 0 : _j.addresses) === null || _k === void 0 ? void 0 : _k[0],
+                } }));
+        });
+        // Format the response
+        res.status(200).json({
+            favoriteProducts: itemsWithAddress,
+            favoriteCharities,
+        });
     }
     catch (error) {
         console.error("Error fetching favorites:", error);

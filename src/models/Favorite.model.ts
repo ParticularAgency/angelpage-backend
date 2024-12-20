@@ -6,7 +6,7 @@ interface IFavoriteItem {
 }
 
 export interface IFavorite extends Document {
-	user: Types.ObjectId; // Use Types.ObjectId for strict typing
+	user: Types.ObjectId;
 	items: IFavoriteItem[];
 }
 
@@ -16,7 +16,7 @@ const favoriteItemSchema = new Schema<IFavoriteItem>({
 });
 
 const favoriteSchema = new Schema<IFavorite>({
-	user: { type: Schema.Types.ObjectId, ref: "User", required: true }, // Explicitly use Schema.Types.ObjectId
+	user: { type: Schema.Types.ObjectId, ref: "User", required: true },
 	items: [favoriteItemSchema],
 });
 

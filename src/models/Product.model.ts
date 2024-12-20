@@ -69,7 +69,7 @@ const productSchema = new Schema<IProduct>(
 		charity: { type: Schema.Types.ObjectId, ref: "Charity", required: false },
 		status: {
 			type: String,
-			enum: ["DRAFT", "LIVE"],
+			enum: ["DRAFT", "LIVE", "REMOVED"],
 			default: "DRAFT",
 			required: false,
 		},

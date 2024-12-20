@@ -26,7 +26,8 @@ router.delete("/profile/addresses/:addressId", (0, auth_middleware_1.authMiddlew
 router.post("/profile/payments", (0, auth_middleware_1.authMiddleware)(), charities_controller_1.addPayment);
 router.put("/profile/payments/:paymentId", (0, auth_middleware_1.authMiddleware)(), charities_controller_1.updatePayment);
 router.delete("/profile/payments/:paymentId", (0, auth_middleware_1.authMiddleware)(), charities_controller_1.deletePayment);
+router.get("/charities", charities_controller_1.getCharityList);
+router.get("/charities/:charityid", charities_controller_1.getCharityDetails);
 // storefront data routes
 // router.get("/storefront/:storefrontid", getStorefrontData);
-router.get("/charities", (0, auth_middleware_1.authMiddleware)(), charities_controller_1.getCharityList);
 exports.default = router;

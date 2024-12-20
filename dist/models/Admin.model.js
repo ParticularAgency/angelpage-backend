@@ -37,18 +37,75 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
-// User schema definition
+// Address Schema
+const addressSchema = new mongoose_1.Schema({
+    type: { type: String, required: true },
+    name: { type: String, required: true },
+    address: { type: String, required: true },
+    city: { type: String, required: true },
+    country: { type: String, required: true },
+    postcode: { type: String, required: true },
+});
+// Payment Method Schema
+const paymentMethodSchema = new mongoose_1.Schema({
+    nameAccountHolder: { type: String, required: true },
+    accountNumber: { type: String, required: true },
+    expiryDate: { type: String, required: true },
+    cvvNumber: { type: String, required: true },
+    billingAddress: {
+        name: {
+            type: String,
+            required: function () {
+                return !this.useShippingAsBilling;
+            },
+            default: "",
+        },
+        address: {
+            type: String,
+            required: function () {
+                return !this.useShippingAsBilling;
+            },
+            default: "",
+        },
+        city: {
+            type: String,
+            required: function () {
+                return !this.useShippingAsBilling;
+            },
+            default: "",
+        },
+        country: {
+            type: String,
+            required: function () {
+                return !this.useShippingAsBilling;
+            },
+            default: "",
+        },
+        postCode: {
+            type: String,
+            required: function () {
+                return !this.useShippingAsBilling;
+            },
+            default: "",
+        },
+    },
+    useShippingAsBilling: { type: Boolean, default: false },
+});
+// Admin schema definition
 const adminSchema = new mongoose_1.Schema({
     firstName: { type: String, required: true },
     lastName: { type: String, required: true },
-    name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     userName: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    description: { type: String, required: true },
-    role: { type: String, enum: ["ADMIN"], default: "ADMIN" },
+    description: { type: String },
+    profileImage: { type: String, default: "" },
     profileCompleted: { type: Boolean, default: false },
+    dateBirth: { type: String },
     verified: { type: Boolean, default: false },
+    addresses: [addressSchema],
+    payments: [paymentMethodSchema],
+    role: { type: String, enum: ["ADMIN"], default: "ADMIN" },
     lastWelcomeBackEmailSent: Date,
     verificationCode: { type: String },
     verificationExpiry: { type: Date },

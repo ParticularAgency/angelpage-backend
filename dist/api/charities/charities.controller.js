@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getCharityList = exports.getStorefrontData = exports.deletePayment = exports.updatePayment = exports.addPayment = exports.deleteAddress = exports.updateAddress = exports.addAddress = exports.getCharityAdminInfo = exports.updateCharityAdminInfo = exports.getCharityProfile = exports.updateProfile = void 0;
+exports.getCharityDetails = exports.getCharityList = exports.getStorefrontData = exports.deletePayment = exports.updatePayment = exports.addPayment = exports.deleteAddress = exports.updateAddress = exports.addAddress = exports.getCharityAdminInfo = exports.updateCharityAdminInfo = exports.getCharityProfile = exports.updateProfile = void 0;
 // import { Request, Response } from "express";
 const cloudinary_1 = __importDefault(require("../../config/cloudinary"));
 const Charity_model_1 = __importDefault(require("../../models/Charity.model"));
@@ -278,25 +278,28 @@ const deletePayment = (req, res) => __awaiter(void 0, void 0, void 0, function* 
     }
 });
 exports.deletePayment = deletePayment;
-// Storefront data
+// Storefront data - Public Access
 const getStorefrontData = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { storefrontid } = req.params;
+        // Logging received storefront ID
         console.log("Received storefrontid:", storefrontid);
+        // Query the charity using the provided storefront ID
         const charity = yield Charity_model_1.default.findOne({ storefrontId: storefrontid })
             .select("charityName charityNumber storefrontId description profileImage charityBannerImage addresses listedProducts")
             .populate("listedProducts");
-        console.log("Charity with populated products:", charity);
+        // Check if the charity exists
         if (!charity) {
             console.log("No charity found for storefrontId:", storefrontid);
             return res.status(404).json({ message: "Charity not found" });
         }
+        // Respond with the charity data
         console.log("Charity data:", charity);
         res.status(200).json({ charity });
     }
     catch (error) {
         console.error("Error fetching storefront data:", error);
-        res.status(500).json({ message: "Failed to fetch storefront data" });
+        res.status(500).json({ message: "Failed to fetch storefront data", error: error.message });
     }
 });
 exports.getStorefrontData = getStorefrontData;
@@ -311,3 +314,24 @@ const getCharityList = (req, res) => __awaiter(void 0, void 0, void 0, function*
     }
 });
 exports.getCharityList = getCharityList;
+// Get Charity Details - Public Access
+const getCharityDetails = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { charityid } = req.params; // Correctly retrieve `charityid`
+        if (!charityid) {
+            return res.status(400).json({ message: 'Charity ID is required' });
+        }
+        const charity = yield Charity_model_1.default.findById(charityid)
+            .select('charityName charityNumber description profileImage charityBannerImage addresses listedProducts')
+            .populate('listedProducts');
+        if (!charity) {
+            return res.status(404).json({ message: 'Charity not found' });
+        }
+        res.status(200).json({ charity });
+    }
+    catch (error) {
+        console.error('Error fetching charity details:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+exports.getCharityDetails = getCharityDetails;

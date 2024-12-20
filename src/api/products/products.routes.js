@@ -13,6 +13,8 @@ import {
 	getRoleBasedListings,
 	getListingProducts,
 	getRelatedProducts,
+	getDraftProducts,
+	
 } from "./products.controller";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 
@@ -29,14 +31,7 @@ router.post(
 	createProduct,
 );
 
-// Edit a product by ID
-router.put("/:productId", authMiddleware(), editProduct);
 
-// Archive (soft delete) a product by ID
-router.patch("/:productId/archive", authMiddleware(), archiveProduct);
-
-// Permanently delete a product by ID
-router.delete("/:productId", authMiddleware(), deleteProduct);
 
 // List all products
 router.get("/all", getAllProducts);
@@ -56,10 +51,31 @@ router.get("/listing/latest-products", getProductsByLatest);
 // Public endpoint to fetch related products
 router.get("/related", getRelatedProducts);
 
-// Fetch products based on user role (USER or CHARITY)
-router.get("/listings", authMiddleware(), getRoleBasedListings);
+// global suggetion endpoint public access
+router.get("/related", getRelatedProducts);
 
 // Fetch user's own listings
 router.get("/mylistings", authMiddleware(), getListingProducts);
+
+
+
+
+// Edit a product by ID
+router.put("/:productId", authMiddleware(), editProduct);
+
+// Archive (soft delete) a product by ID
+router.patch("/:productId/archive", authMiddleware(), archiveProduct);
+
+// Archive (draft product) a product by ID
+router.patch("/:productId/draft", authMiddleware(), getDraftProducts);
+
+// Fetch products based on user role (USER or CHARITY)
+router.get("/listings", authMiddleware(), getRoleBasedListings);
+
+// Permanently delete a product by ID
+router.delete("/:productId", authMiddleware(), deleteProduct);
+
+
+
 
 export default router;

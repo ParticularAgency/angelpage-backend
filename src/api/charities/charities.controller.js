@@ -293,32 +293,36 @@ export const deletePayment = async (req, res) => {
 };
 
 
-// Storefront data
+// Storefront data - Public Access
 export const getStorefrontData = async (req, res) => {
 	try {
 		const { storefrontid } = req.params;
 
+		// Logging received storefront ID
 		console.log("Received storefrontid:", storefrontid);
 
+		// Query the charity using the provided storefront ID
 		const charity = await Charity.findOne({ storefrontId: storefrontid })
 			.select(
-				"charityName charityNumber storefrontId description profileImage charityBannerImage addresses listedProducts",
+				"charityName charityNumber storefrontId description profileImage charityBannerImage addresses listedProducts"
 			)
 			.populate("listedProducts");
 
-console.log("Charity with populated products:", charity);
+		// Check if the charity exists
 		if (!charity) {
 			console.log("No charity found for storefrontId:", storefrontid);
 			return res.status(404).json({ message: "Charity not found" });
 		}
 
+		// Respond with the charity data
 		console.log("Charity data:", charity);
 		res.status(200).json({ charity });
 	} catch (error) {
 		console.error("Error fetching storefront data:", error);
-		res.status(500).json({ message: "Failed to fetch storefront data" });
+		res.status(500).json({ message: "Failed to fetch storefront data", error: error.message });
 	}
 };
+
 
 export const getCharityList = async (req, res) => {
 	try {
@@ -327,5 +331,30 @@ export const getCharityList = async (req, res) => {
 	} catch (error) {
 		console.error("Error fetching charities:", error);
 		res.status(500).json({ message: "Error fetching charities" });
+	}
+};
+
+// Get Charity Details - Public Access
+export const getCharityDetails = async (req, res) => {
+	try {
+		const { charityid } = req.params; // Correctly retrieve `charityid`
+		if (!charityid) {
+			return res.status(400).json({ message: 'Charity ID is required' });
+		}
+
+		const charity = await Charity.findById(charityid)
+			.select(
+				'charityName charityNumber description profileImage charityBannerImage addresses listedProducts'
+			)
+			.populate('listedProducts');
+
+		if (!charity) {
+			return res.status(404).json({ message: 'Charity not found' });
+		}
+
+		res.status(200).json({ charity });
+	} catch (error) {
+		console.error('Error fetching charity details:', error);
+		res.status(500).json({ message: 'Internal server error' });
 	}
 };

@@ -13,6 +13,7 @@ import {
 	getCharityAdminInfo,
 	updateCharityAdminInfo,
 	getCharityList,
+	getCharityDetails
 	// getStorefrontData,
 } from "./charities.controller";
 
@@ -52,7 +53,11 @@ router.post("/profile/payments", authMiddleware(), addPayment);
 router.put("/profile/payments/:paymentId", authMiddleware(), updatePayment);
 router.delete("/profile/payments/:paymentId", authMiddleware(), deletePayment);
 
+router.get("/charities", getCharityList);
+
+router.get("/charities/:charityid", getCharityDetails);
+
 // storefront data routes
 // router.get("/storefront/:storefrontid", getStorefrontData);
-router.get("/charities", authMiddleware(), getCharityList);
+
 export default router;
