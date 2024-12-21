@@ -27,6 +27,6 @@ const mongoose_1 = __importStar(require("mongoose"));
 const SearchSchema = new mongoose_1.Schema({
     name: { type: String, required: true },
     type: { type: String, enum: ["Product", "Charity"], required: true },
-    relatedId: { type: String, required: true }, // Product or Charity ID
+    relatedId: { type: String, required: true },
 }, { timestamps: true });
 exports.default = mongoose_1.default.model("Search", SearchSchema);

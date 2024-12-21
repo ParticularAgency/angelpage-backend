@@ -10,7 +10,7 @@ const SearchSchema: Schema = new Schema(
 	{
 		name: { type: String, required: true },
 		type: { type: String, enum: ["Product", "Charity"], required: true },
-		relatedId: { type: String, required: true }, // Product or Charity ID
+		relatedId: { type: String, required: true }, 
 	},
 	{ timestamps: true },
 );

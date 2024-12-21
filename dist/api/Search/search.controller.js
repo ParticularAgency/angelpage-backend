@@ -13,8 +13,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getSearchSuggestions = void 0;
-const Product_model_1 = __importDefault(require("../../models/Product.model")); // Replace with your Product model
-const Charity_model_1 = __importDefault(require("../../models/Charity.model")); // Replace with your Charity model
+const Product_model_1 = __importDefault(require("../../models/Product.model"));
+const Charity_model_1 = __importDefault(require("../../models/Charity.model"));
 const getSearchSuggestions = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { query } = req.query;
     if (!query || typeof query !== "string") {

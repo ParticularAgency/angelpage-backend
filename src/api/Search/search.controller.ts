@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
-import Product from "../../models/Product.model"; // Replace with your Product model
-import Charity from "../../models/Charity.model"; // Replace with your Charity model
+import Product from "../../models/Product.model"; 
+import Charity from "../../models/Charity.model"; 
 
 export const getSearchSuggestions = async (req: Request, res: Response) => {
 	const { query } = req.query;
