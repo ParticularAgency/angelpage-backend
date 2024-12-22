@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendSubsThanksEmail = exports.sendPasswordResetCompletionEmail = exports.sendPasswordResetEmail = exports.sendWelcomeBackEmail = exports.sendVerificationEmail = exports.sendWelcomeEmail = exports.sendEmail = void 0;
+exports.sendContactEmail = exports.sendSubsThanksEmail = exports.sendPasswordResetCompletionEmail = exports.sendPasswordResetEmail = exports.sendWelcomeBackEmail = exports.sendVerificationEmail = exports.sendWelcomeEmail = exports.sendEmail = void 0;
 const mail_1 = __importDefault(require("@sendgrid/mail"));
 // Initialize SendGrid with the API key
 mail_1.default.setApiKey(process.env.SENDGRID_API_KEY || "");
@@ -139,3 +139,22 @@ const sendSubsThanksEmail = (email) => __awaiter(void 0, void 0, void 0, functio
     }
 });
 exports.sendSubsThanksEmail = sendSubsThanksEmail;
+const sendContactEmail = (_a) => __awaiter(void 0, [_a], void 0, function* ({ to, subject, text, html }) {
+    const msg = {
+        from: process.env.SENDGRID_FROM || "noreply@yourdomain.com",
+        to,
+        subject,
+        text: text || "This is a fallback text content.",
+        html: html || "<p>This is a fallback HTML content.</p>",
+    };
+    try {
+        console.log("Sending email with payload:", msg);
+        const response = yield mail_1.default.send(msg);
+        console.log(`Email sent successfully to ${to}:`, response[0].statusCode);
+    }
+    catch (error) {
+        console.error("Error sending email:", error.response ? error.response.body.errors : error);
+        throw new Error("Failed to send email");
+    }
+});
+exports.sendContactEmail = sendContactEmail;

@@ -8,4 +8,5 @@ const email_controller_1 = require("./email.controller");
 const router = express_1.default.Router();
 // Route for subscribing
 router.post("/subscribe", email_controller_1.subscribe);
+router.post("/contact", email_controller_1.contactUs);
 exports.default = router;

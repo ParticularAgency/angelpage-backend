@@ -180,3 +180,25 @@ export const sendSubsThanksEmail = async (email: string) => {
 		throw new Error("Failed to send subscription thank you email.");
 	}
 };
+
+export const sendContactEmail = async ({ to, subject, text, html }: EmailOptions) => {
+	const msg: sgMail.MailDataRequired = {
+		from: process.env.SENDGRID_FROM || "noreply@yourdomain.com",
+		to,
+		subject,
+		text: text || "This is a fallback text content.",
+		html: html || "<p>This is a fallback HTML content.</p>",
+	};
+
+	try {
+		console.log("Sending email with payload:", msg);
+		const response = await sgMail.send(msg);
+		console.log(`Email sent successfully to ${to}:`, response[0].statusCode);
+	} catch (error: any) {
+		console.error(
+			"Error sending email:",
+			error.response ? error.response.body.errors : error,
+		);
+		throw new Error("Failed to send email");
+	}
+};
