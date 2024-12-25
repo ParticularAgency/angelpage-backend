@@ -171,53 +171,61 @@ const getSoldItems = (req, res) => __awaiter(void 0, void 0, void 0, function* (
 });
 exports.getSoldItems = getSoldItems;
 const getPurchaseItems = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { buyerId } = req.params;
+    const { buyerId } = req.params; // Get buyerId from request params
     try {
-        // Find all orders containing products sold by the given seller
-        const orders = yield Order_model_1.default.find({
-            "products.seller": buyerId,
-        })
+        // Find all orders for the given buyerId
+        const orders = yield Order_model_1.default.find({ buyerId })
             .populate("products.productId", "name price images brand")
-            .populate("products.charity", "charityName profileImage _id storefrontId")
-            .populate("buyerId", "firstName lastName email profileImage");
+            .populate("products.seller", "firstName lastName email profileImage")
+            .populate("products.charity", "charityName profileImage _id storefrontId");
+        if (!orders || orders.length === 0) {
+            return res.status(404).json({ success: false, message: "No purchases found" });
+        }
         // Transform data to include additional details
-        const soldItems = orders.flatMap(order => order.products
-            .filter(product => { var _a; return ((_a = product.seller) === null || _a === void 0 ? void 0 : _a.toString()) === buyerId; })
-            .map(product => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
+        const purchaseItems = orders.flatMap(order => order.products.map(product => {
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t;
             return ({
                 orderId: order._id,
-                status: order.status,
-                orderStatus: order.orderStatus,
-                sellerId: ((_a = order.sellerId) === null || _a === void 0 ? void 0 : _a._id) || null,
-                sellerName: `${((_b = order.sellerId) === null || _b === void 0 ? void 0 : _b.firstName) || "Unknown"} ${((_c = order.sellerId) === null || _c === void 0 ? void 0 : _c.lastName) || ""}`.trim(),
-                sellerEmail: ((_d = order.sellerId) === null || _d === void 0 ? void 0 : _d.email) || null,
-                sellerProfileImage: ((_e = order.sellerId) === null || _e === void 0 ? void 0 : _e.profileImage) || null,
-                productId: ((_f = product.productId) === null || _f === void 0 ? void 0 : _f._id) || null,
-                productName: ((_g = product.productId) === null || _g === void 0 ? void 0 : _g.name) || "Unknown Product",
-                charityProfit: ((_h = order.products[0]) === null || _h === void 0 ? void 0 : _h.charityProfit) || "Unknown Profit",
-                adminFee: ((_j = order.products[0]) === null || _j === void 0 ? void 0 : _j.adminFee) || "Unknown admin fees",
-                productBrand: ((_k = product.productId) === null || _k === void 0 ? void 0 : _k.brand) || "Unknown Product",
-                productPrice: ((_l = product.productId) === null || _l === void 0 ? void 0 : _l.price) || 0,
-                productImages: ((_m = product.productId) === null || _m === void 0 ? void 0 : _m.images) || [],
+                buyerId: order.buyerId,
+                buyerName: `${((_a = order.shippingAddress) === null || _a === void 0 ? void 0 : _a.name) || "Unknown Buyer"}`,
+                productId: ((_b = product.productId) === null || _b === void 0 ? void 0 : _b._id) || null,
+                productName: ((_c = product.productId) === null || _c === void 0 ? void 0 : _c.name) || product.name || "Unknown Product",
+                productPrice: ((_d = product.productId) === null || _d === void 0 ? void 0 : _d.price) || product.price || 0,
+                charityProfit: product.charityProfit || 0,
+                adminFee: product.adminFee || 0,
+                productImages: ((_e = product.productId) === null || _e === void 0 ? void 0 : _e.images) || [],
+                sellerId: ((_f = product.seller) === null || _f === void 0 ? void 0 : _f._id) || null,
+                sellerName: `${((_g = product.seller) === null || _g === void 0 ? void 0 : _g.firstName) || "Unknown"} ${((_h = product.seller) === null || _h === void 0 ? void 0 : _h.lastName) || ""}`.trim(),
+                sellerEmail: ((_j = product.seller) === null || _j === void 0 ? void 0 : _j.email) || null,
+                sellerProfileImage: ((_k = product.seller) === null || _k === void 0 ? void 0 : _k.profileImage) || null,
+                charityId: ((_l = product.charity) === null || _l === void 0 ? void 0 : _l._id) || null,
+                charityName: ((_m = product.charity) === null || _m === void 0 ? void 0 : _m.charityName) || "Unknown Charity",
+                charityProfileImage: ((_o = product.charity) === null || _o === void 0 ? void 0 : _o.profileImage) || null,
                 quantity: product.quantity,
-                totalProductCost: product.totalProductCost,
-                charityId: ((_o = product.charity) === null || _o === void 0 ? void 0 : _o._id) || null,
-                charityName: ((_p = product.charity) === null || _p === void 0 ? void 0 : _p.charityName) || "Unknown Charity",
-                charityProfileImage: ((_q = product.charity) === null || _q === void 0 ? void 0 : _q.profileImage) || null,
-                storefrontId: ((_r = product.charity) === null || _r === void 0 ? void 0 : _r.storefrontId) || null,
-                orderDate: order.createdAt,
+                totalProductCost: product.totalProductCost || 0,
+                shippingAddress: {
+                    name: ((_p = order.shippingAddress) === null || _p === void 0 ? void 0 : _p.name) || "",
+                    address: ((_q = order.shippingAddress) === null || _q === void 0 ? void 0 : _q.address) || "",
+                    city: ((_r = order.shippingAddress) === null || _r === void 0 ? void 0 : _r.city) || "",
+                    country: ((_s = order.shippingAddress) === null || _s === void 0 ? void 0 : _s.country) || "",
+                    postcode: ((_t = order.shippingAddress) === null || _t === void 0 ? void 0 : _t.postcode) || "",
+                },
+                paymentMethod: order.paymentMethod || null,
+                orderStatus: order.orderStatus || "Unknown",
+                status: order.status || "Unknown",
+                createdAt: order.createdAt,
+                updatedAt: order.updatedAt,
             });
         }));
         res.status(200).json({
             success: true,
-            totalSoldItems: soldItems.length,
-            soldItems,
+            totalPurchaseItems: purchaseItems.length,
+            purchaseItems,
         });
     }
     catch (error) {
-        console.error("Error fetching sold items:", error);
-        res.status(500).json({ error: "Failed to fetch sold items" });
+        console.error("Error fetching purchase items:", error);
+        res.status(500).json({ error: "Failed to fetch purchase items" });
     }
 });
 exports.getPurchaseItems = getPurchaseItems;

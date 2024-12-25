@@ -192,58 +192,67 @@ export const getSoldItems = async (req, res) => {
 };
 
 export const getPurchaseItems = async (req, res) => {
-	const { buyerId } = req.params;
+	const { buyerId } = req.params; // Get buyerId from request params
 
 	try {
-		// Find all orders containing products sold by the given seller
-		const orders = await Order.find({
-			"products.seller": buyerId,
-		})
+		// Find all orders for the given buyerId
+		const orders = await Order.find({ buyerId })
 			.populate("products.productId", "name price images brand")
-			.populate("products.charity", "charityName profileImage _id storefrontId")
-			.populate("buyerId", "firstName lastName email profileImage");
+			.populate("products.seller", "firstName lastName email profileImage")
+			.populate("products.charity", "charityName profileImage _id storefrontId");
+
+		if (!orders || orders.length === 0) {
+			return res.status(404).json({ success: false, message: "No purchases found" });
+		}
 
 		// Transform data to include additional details
-		const soldItems = orders.flatMap(order =>
-			order.products
-				.filter(product => product.seller?.toString() === buyerId)
-				.map(product => ({
-					orderId: order._id,
-					status: order.status,
-					orderStatus: order.orderStatus,
-					sellerId: order.sellerId?._id || null,
-					sellerName: `${order.sellerId?.firstName || "Unknown"} ${
-						order.sellerId?.lastName || ""
+		const purchaseItems = orders.flatMap(order =>
+			order.products.map(product => ({
+				orderId: order._id,
+				buyerId: order.buyerId,
+				buyerName: `${order.shippingAddress?.name || "Unknown Buyer"}`,
+				productId: product.productId?._id || null,
+				productName: product.productId?.name || product.name || "Unknown Product",
+				productPrice: product.productId?.price || product.price || 0,
+				charityProfit: product.charityProfit || 0,
+				adminFee: product.adminFee || 0,
+				productImages: product.productId?.images || [],
+				sellerId: product.seller?._id || null,
+				sellerName: `${product.seller?.firstName || "Unknown"} ${product.seller?.lastName || ""
 					}`.trim(),
-					sellerEmail: order.sellerId?.email || null,
-					sellerProfileImage: order.sellerId?.profileImage || null,
-					productId: product.productId?._id || null,
-					productName: product.productId?.name || "Unknown Product",
-					charityProfit: order.products[0]?.charityProfit || "Unknown Profit",
-					adminFee: order.products[0]?.adminFee || "Unknown admin fees",
-					productBrand: product.productId?.brand || "Unknown Product",
-					productPrice: product.productId?.price || 0,
-					productImages: product.productId?.images || [],
-					quantity: product.quantity,
-					totalProductCost: product.totalProductCost,
-					charityId: product.charity?._id || null,
-					charityName: product.charity?.charityName || "Unknown Charity",
-					charityProfileImage: product.charity?.profileImage || null,
-					storefrontId: product.charity?.storefrontId || null,
-					orderDate: order.createdAt,
-				})),
+				sellerEmail: product.seller?.email || null,
+				sellerProfileImage: product.seller?.profileImage || null,
+				charityId: product.charity?._id || null,
+				charityName: product.charity?.charityName || "Unknown Charity",
+				charityProfileImage: product.charity?.profileImage || null,
+				quantity: product.quantity,
+				totalProductCost: product.totalProductCost || 0,
+				shippingAddress: {
+					name: order.shippingAddress?.name || "",
+					address: order.shippingAddress?.address || "",
+					city: order.shippingAddress?.city || "",
+					country: order.shippingAddress?.country || "",
+					postcode: order.shippingAddress?.postcode || "",
+				},
+				paymentMethod: order.paymentMethod || null,
+				orderStatus: order.orderStatus || "Unknown",
+				status: order.status || "Unknown",
+				createdAt: order.createdAt,
+				updatedAt: order.updatedAt,
+			}))
 		);
 
 		res.status(200).json({
 			success: true,
-			totalSoldItems: soldItems.length,
-			soldItems,
+			totalPurchaseItems: purchaseItems.length,
+			purchaseItems,
 		});
 	} catch (error) {
-		console.error("Error fetching sold items:", error);
-		res.status(500).json({ error: "Failed to fetch sold items" });
+		console.error("Error fetching purchase items:", error);
+		res.status(500).json({ error: "Failed to fetch purchase items" });
 	}
 };
+
 // Get total sold items and revenue
 export const getTotalSoldItems = async (_req, res) => {
 	const { sellerId } = req.params;
