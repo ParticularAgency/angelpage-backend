@@ -4,6 +4,7 @@ interface CartItem {
 	productId: mongoose.Types.ObjectId;
 	quantity: number;
 }
+
 export interface ICartDocument extends Document {
 	userId: mongoose.Types.ObjectId;
 	items: CartItem[];

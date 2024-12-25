@@ -7,6 +7,7 @@ import favoritesRoutes from "../api/favorites/favorites.routes"; // Adjust the p
 import storefrontRoutes from "../api/storefront/storefront.routes"; // Adjust the path as necessary, based on your folder structure
 import productsRoutes from "../api/products/products.routes"; // Adjust the path as necessary, based on your folder structure
 import cartRoutes from "../api/cart/cart.routes"; // Adjust the path as necessary, based on your folder structure
+import orderRoutes from "../api/orders/orders.routes"; // Adjust the path as necessary, based on your folder structure
 import emailRoutes from "../api/email/email.routes"; // Adjust the path as necessary, based on your folder structure
 import searchRoutes from "../api/Search/search.routes"; // Adjust the path as necessary, based on your folder structure
 
@@ -26,6 +27,7 @@ router.use("/favorites", favoritesRoutes); // All routes under "/auth" will be h
 router.use("/storefront", storefrontRoutes); // All routes under "/auth" will be handled by authRoutes
 router.use("/products", productsRoutes); // All routes under "/auth" will be handled by authRoutes
 router.use("/cart", cartRoutes); // All routes under "/auth" will be handled by authRoutes
+router.use("/order", orderRoutes); // All routes under "/auth" will be handled by authRoutes
 router.use("/email", emailRoutes); // All routes under "/auth" will be handled by authRoutes
 router.use("/search", searchRoutes); // All routes under "/auth" will be handled by authRoutes
 

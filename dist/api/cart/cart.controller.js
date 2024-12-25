@@ -52,21 +52,21 @@ const addProductOnCart = (req, res) => __awaiter(void 0, void 0, void 0, functio
 exports.addProductOnCart = addProductOnCart;
 // Get all products in the cart
 const getProductOnCart = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { userId } = req.params;
     try {
-        const cart = yield Cart_model_1.default.findOne({ userId: req.params.userId })
-            .populate({
+        const cart = yield Cart_model_1.default.findOne({ userId }).populate({
             path: "items.productId",
-            populate: {
-                path: "seller",
-                select: "firstName lastName userName profileImage addresses",
-            },
-        })
-            .populate({
-            path: "items.productId",
-            populate: {
-                path: "charity",
-                select: "charityName charityID profileImage  addresses",
-            },
+            select: "name price selectedCharityName selectedCharityId brand images seller charity charityProfit",
+            populate: [
+                {
+                    path: "seller",
+                    select: "firstName lastName profileImage addresses _id",
+                },
+                {
+                    path: "charity",
+                    select: "charityName charityID profileImage addresses _id",
+                },
+            ],
         });
         if (!cart) {
             return res.status(404).json({ message: "Cart not found" });

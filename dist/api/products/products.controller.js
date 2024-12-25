@@ -120,19 +120,19 @@ const createProduct = (req, res) => __awaiter(void 0, void 0, void 0, function* 
 exports.createProduct = createProduct;
 // Fetch all products (public access)
 const getAllProducts = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { isArchived, status } = req.query; // Optional query to handle archived state
+    const { isArchived, status } = req.query;
     try {
-        const query = Object.assign({}, (status && { status })); // Initialize query object
+        const query = Object.assign({}, (status && { status }));
         if (isArchived !== undefined) {
             query.isArchived = isArchived === "true"; // Handle archived filter
         }
         else {
-            query.isArchived = false; // Default to showing only active products
+            query.isArchived = false;
         }
         const products = yield Product_model_1.default.find(query)
             .populate("seller", "firstName lastName profileImage addresses charityName")
             .populate("charity", "charityName charityID profileImage addresses")
-            .sort({ createdAt: -1 }); // Sort by creation date (newest first)
+            .sort({ createdAt: -1 });
         if (!products || products.length === 0) {
             return res.status(404).json({ message: "No products found." });
         }
@@ -142,7 +142,7 @@ const getAllProducts = (req, res) => __awaiter(void 0, void 0, void 0, function*
                     firstName: (_a = product.seller) === null || _a === void 0 ? void 0 : _a.firstName,
                     lastName: (_b = product.seller) === null || _b === void 0 ? void 0 : _b.lastName,
                     profileImage: (_c = product.seller) === null || _c === void 0 ? void 0 : _c.profileImage,
-                    address: (_e = (_d = product.seller) === null || _d === void 0 ? void 0 : _d.addresses) === null || _e === void 0 ? void 0 : _e[0], // Include default address
+                    address: (_e = (_d = product.seller) === null || _d === void 0 ? void 0 : _d.addresses) === null || _e === void 0 ? void 0 : _e[0],
                 }, charity: {
                     charityName: (_f = product.charity) === null || _f === void 0 ? void 0 : _f.charityName,
                     charityID: (_g = product.charity) === null || _g === void 0 ? void 0 : _g.charityID,

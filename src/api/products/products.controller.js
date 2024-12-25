@@ -130,22 +130,22 @@ export const createProduct = async (req, res) => {
 
 // Fetch all products (public access)
 export const getAllProducts = async (req, res) => {
-	const { isArchived , status} = req.query; // Optional query to handle archived state
+	const { isArchived , status} = req.query;
 
 	try {
 		const query = {
 			...(status && { status }),
-		}; // Initialize query object
+		};
 		if (isArchived !== undefined) {
 			query.isArchived = isArchived === "true"; // Handle archived filter
 		} else {
-			query.isArchived = false; // Default to showing only active products
+			query.isArchived = false; 
 		}
 
 		const products = await Product.find(query)
 			.populate("seller", "firstName lastName profileImage addresses charityName")
 			.populate("charity", "charityName charityID profileImage addresses")
-			.sort({ createdAt: -1 }); // Sort by creation date (newest first)
+			.sort({ createdAt: -1 }); 
 
 		if (!products || products.length === 0) {
 			return res.status(404).json({ message: "No products found." });
@@ -156,7 +156,7 @@ export const getAllProducts = async (req, res) => {
 				firstName: product.seller?.firstName,
 				lastName: product.seller?.lastName,
 				profileImage: product.seller?.profileImage,
-				address: product.seller?.addresses?.[0], // Include default address
+				address: product.seller?.addresses?.[0],
 			},
 			charity: {
 				charityName: product.charity?.charityName,

@@ -42,26 +42,29 @@ export const addProductOnCart = async (req: Request, res: Response) => {
 
 // Get all products in the cart
 export const getProductOnCart = async (req: Request, res: Response) => {
+	const { userId } = req.params;
+
 	try {
-		const cart = await Cart.findOne({ userId: req.params.userId })
-			.populate({
-				path: "items.productId",
-				populate: {
+		const cart = await Cart.findOne({ userId }).populate({
+			path: "items.productId",
+			select:
+				"name price selectedCharityName selectedCharityId brand images seller charity charityProfit",
+			populate: [
+				{
 					path: "seller",
-					select: "firstName lastName userName profileImage addresses",
+					select: "firstName lastName profileImage addresses _id",
 				},
-			})
-			.populate({
-				path: "items.productId",
-				populate: {
+				{
 					path: "charity",
-					select: "charityName charityID profileImage  addresses",
+					select: "charityName charityID profileImage addresses _id",
 				},
-			});
+			],
+		});
 
 		if (!cart) {
 			return res.status(404).json({ message: "Cart not found" });
 		}
+
 		res.status(200).json({ cart });
 	} catch (error) {
 		console.error("Error fetching cart:", error);
