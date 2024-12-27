@@ -17,7 +17,7 @@ const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 
 // Utility to generate a token
 const generateToken = (userId, role) => {
-  return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: "30m" });
+  return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: "1d" });
 };
 
 
