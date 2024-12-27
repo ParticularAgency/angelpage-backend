@@ -14,6 +14,8 @@ export const updateProfile = async (req, res) => {
 			email,
 			userName,
 			description,
+			charityPhone,
+			websiteLink,
 			currentPassword,
 			newPassword,
 		} = req.body;
@@ -43,6 +45,8 @@ export const updateProfile = async (req, res) => {
 		if (dateBirth) updateData.dateBirth = dateBirth;
 		if (email) updateData.email = email;
 		if (userName) updateData.userName = userName;
+		if (charityPhone) updateData.charityPhone = charityPhone;
+		if (websiteLink) updateData.websiteLink = websiteLink;
 		if (description) updateData.description = description;
 
 		// Handle profile image upload
@@ -106,7 +110,7 @@ export const getCharityProfile = async (req, res) => {
 export const updateCharityAdminInfo = async (req, res) => {
 	try {
 		const { userId } = req.user; // userId should be set by the auth middleware
-		const { charityName, charityNumber, charityID, description } = req.body;
+		const { charityName, charityNumber, charityID, description,phoneNumber,websiteLink } = req.body;
 
 		const user = await Charity.findById(userId);
 		if (!user) return res.status(404).json({ message: "User not found" });
@@ -116,6 +120,8 @@ export const updateCharityAdminInfo = async (req, res) => {
 			charityNumber,
 			charityID,
 			description,
+			phoneNumber,
+			websiteLink,
 		});
 
 		await user.save();
@@ -344,7 +350,7 @@ export const getCharityDetails = async (req, res) => {
 
 		const charity = await Charity.findById(charityid)
 			.select(
-				'charityName charityNumber description profileImage charityBannerImage addresses listedProducts'
+				'charityName charityNumber description phoneNumber websiteLink profileImage charityBannerImage addresses listedProducts'
 			)
 			.populate('listedProducts');
 

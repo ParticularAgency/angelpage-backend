@@ -11,4 +11,5 @@ router.get("/:userId", (0, auth_middleware_1.authMiddleware)(), cart_controller_
 router.post("/remove", (0, auth_middleware_1.authMiddleware)(), cart_controller_1.removeProductOnCart);
 // Clear all products from the cart
 router.post("/clear", (0, auth_middleware_1.authMiddleware)(), cart_controller_1.clearProductOnCart);
+router.post("/update-quantity", (0, auth_middleware_1.authMiddleware)(), cart_controller_1.updateQuantityInCart);
 exports.default = router;

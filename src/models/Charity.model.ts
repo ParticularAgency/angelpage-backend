@@ -36,6 +36,8 @@ export interface ICharity extends Document {
 	userName: string;
 	password: string;
 	description: string;
+	websiteLink: string;
+	phoneNumber: string;
 	role: string;
 	profileImage: string;
 	charityBannerImage: string; // Use string instead of String
@@ -129,6 +131,8 @@ const charitySchema = new Schema<ICharity>(
 		charityName: { type: String, required: false },
 		charityNumber: { type: String, required: false },
 		charityID: { type: String, required: false },
+		phoneNumber: { type: String, required: false },
+		websiteLink: { type: String, required: false },
 		description: { type: String, required: false },
 		storefrontId: { type: String, unique: true, required: false },
 		listedProducts: [{ type: Schema.Types.ObjectId, ref: "Product" }],

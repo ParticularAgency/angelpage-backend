@@ -110,6 +110,8 @@ const charitySchema = new mongoose_1.Schema({
     charityName: { type: String, required: false },
     charityNumber: { type: String, required: false },
     charityID: { type: String, required: false },
+    phoneNumber: { type: String, required: false },
+    websiteLink: { type: String, required: false },
     description: { type: String, required: false },
     storefrontId: { type: String, unique: true, required: false },
     listedProducts: [{ type: mongoose_1.Schema.Types.ObjectId, ref: "Product" }],

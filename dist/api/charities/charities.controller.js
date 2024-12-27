@@ -21,7 +21,7 @@ const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const updateProfile = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { userId } = req.user; // Assumes userId is set by middleware
-        const { firstName, lastName, dateBirth, email, userName, description, currentPassword, newPassword, } = req.body;
+        const { firstName, lastName, dateBirth, email, userName, description, charityPhone, websiteLink, currentPassword, newPassword, } = req.body;
         // Retrieve user document
         const user = yield Charity_model_1.default.findById(userId);
         if (!user)
@@ -47,6 +47,10 @@ const updateProfile = (req, res) => __awaiter(void 0, void 0, void 0, function* 
             updateData.email = email;
         if (userName)
             updateData.userName = userName;
+        if (charityPhone)
+            updateData.charityPhone = charityPhone;
+        if (websiteLink)
+            updateData.websiteLink = websiteLink;
         if (description)
             updateData.description = description;
         // Handle profile image upload
@@ -104,7 +108,7 @@ exports.getCharityProfile = getCharityProfile;
 const updateCharityAdminInfo = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { userId } = req.user; // userId should be set by the auth middleware
-        const { charityName, charityNumber, charityID, description } = req.body;
+        const { charityName, charityNumber, charityID, description, phoneNumber, websiteLink } = req.body;
         const user = yield Charity_model_1.default.findById(userId);
         if (!user)
             return res.status(404).json({ message: "User not found" });
@@ -113,6 +117,8 @@ const updateCharityAdminInfo = (req, res) => __awaiter(void 0, void 0, void 0, f
             charityNumber,
             charityID,
             description,
+            phoneNumber,
+            websiteLink,
         });
         yield user.save();
         res.status(200).json({ message: "Profile updated successfully", user });
@@ -322,7 +328,7 @@ const getCharityDetails = (req, res) => __awaiter(void 0, void 0, void 0, functi
             return res.status(400).json({ message: 'Charity ID is required' });
         }
         const charity = yield Charity_model_1.default.findById(charityid)
-            .select('charityName charityNumber description profileImage charityBannerImage addresses listedProducts')
+            .select('charityName charityNumber description phoneNumber websiteLink profileImage charityBannerImage addresses listedProducts')
             .populate('listedProducts');
         if (!charity) {
             return res.status(404).json({ message: 'Charity not found' });

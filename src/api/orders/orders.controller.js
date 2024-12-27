@@ -1,6 +1,8 @@
+import axios from "axios";
+import { Buffer } from "buffer";
 import Order from "../../models/Order.model";
 import Cart from "../../models/Cart.model";
-import { shipStationClient } from "../../utils/shipstation";
+// import { shipStationClient } from "../../utils/shipstation";
 
 // Create a new order
 export const createOrder = async (req, res) => {
@@ -13,12 +15,12 @@ export const createOrder = async (req, res) => {
 		// serviceCode
  } = req.body;
 
-
+ 
 	try {
 		if (
 			!buyerId ||
 			!products ||
-			products.length === 0 ||
+			products.length === 0 || 
 			!shippingAddress ||
 			!paymentMethod  
 		
@@ -74,50 +76,128 @@ export const createOrder = async (req, res) => {
 		await newOrder.save();
 		// Clear the cart for the user after successful order creation
 		await Cart.findOneAndUpdate({ userId: buyerId }, { items: [] });
-		// // Create a shipment in ShipStation
-		// const shipmentData = {
-		// 	// carrierCode,
-		// 	// serviceCode,
-		// 	packageCode: "package", // Adjust as needed
-		// 	confirmation: "delivery",
+
+		// // Generate label for the created order
+		// const authToken = Buffer.from(
+		// 	`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
+		// ).toString("base64");
+
+		// const labelPayload = {
+		// 	orderId: newOrder._id, // Replace with actual ShipStation order ID if needed
+		// 	carrierCode,
+		// 	serviceCode,
 		// 	shipDate: new Date().toISOString().split("T")[0],
-		// 	weight: { value: 1, units: "ounces" }, // Example weight
-		// 	dimensions: { units: "inches", length: 10, width: 5, height: 5 }, // Example dimensions
-		// 	shipFrom: {
-		// 		name: "Your Company",
-		// 		address1: "123 Warehouse St",
-		// 		city: "YourCity",
-		// 		state: "YourState",
-		// 		postalCode: "12345",
-		// 		country: "US",
+		// 	weight: {
+		// 		value: 2, // Replace with actual weight
+		// 		units: "pounds",
 		// 	},
-		// 	shipTo: shippingAddress,
+		// 	testLabel: false,
 		// };
 
-		// const shipStationResponse = await shipStationClient.createLabel(
-		// 	shipmentData,
+		// const labelResponse = await axios.post(
+		// 	"https://ssapi.shipstation.com/orders/createlabelfororder",
+		// 	labelPayload,
+		// 	{
+		// 		headers: {
+		// 			Authorization: `Basic ${authToken}`,
+		// 			"Content-Type": "application/json",
+		// 		},
+		// 	}
 		// );
 
-		// // Update the order with shipping details
-		// newOrder.trackingNumber = shipStationResponse.trackingNumber;
-		// newOrder.labelId = shipStationResponse.labelId;
-		// newOrder.labelUrl = shipStationResponse.labelUrl;
-		// newOrder.packageInfo = shipStationResponse.packageInfo;
-		// newOrder.pickupInfo = shipStationResponse.pickupInfo;
-		// newOrder.status = "LabelCreated";
+		// const { trackingNumber, labelUrl } = labelResponse.data;
+
+		// // Update the order with the tracking number and label URL
+		// newOrder.trackingNumber = trackingNumber;
+		// newOrder.labelUrl = labelUrl;
+		// newOrder.status = "OrderConfirmed";
 
 		// await newOrder.save();
 
 		res.status(201).json({
 			success: true,
-			message: "Order created successfully",
+			message: "Order created and shipping label generated successfully",
 			order: newOrder,
+			// trackingNumber,
+			// labelUrl,
 		});
 	} catch (error) {
 		console.error("Error creating order:", error);
 		res.status(500).json({ error: error.message || "Failed to create order" });
 	}
 };
+
+// Get carriers from ShipStation
+// export const getCarriers = async (_req, res) => {
+// 	try {
+// 		const authToken = Buffer.from(
+// 			`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
+// 		).toString("base64");
+// 		const response = await axios.get("https://ssapi.shipstation.com/carriers", {
+// 			headers: {
+// 				Authorization: `Basic ${authToken}`,
+// 			},
+// 		});
+
+// 		// Return carriers to the frontend
+// 		res.status(200).json({ success: true, carriers: response.data });
+// 	} catch (error) {
+// 		console.error("Error fetching carriers from ShipStation:", error.response?.data || error.message);
+// 		res.status(500).json({ error: "Failed to fetch carrier list" });
+// 	}
+// };
+
+
+// export const getServices = async (req, res) => {
+// 	const { carrierCode } = req.params;
+
+// 	try {
+// 		const authToken = Buffer.from(
+// 			`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
+// 		).toString("base64");
+
+// 		const response = await axios.get(
+// 			`https://ssapi.shipstation.com/carriers/listservices?carrierCode=${carrierCode}`,
+// 			{
+// 				headers: {
+// 					Authorization: `Basic ${authToken}`,
+// 				},
+// 			}
+// 		);
+
+// 		res.status(200).json({ success: true, services: response.data });
+// 	} catch (error) {
+// 		console.error("Error fetching services:", error.response?.data || error.message);
+// 		res.status(500).json({ error: "Failed to fetch service list" });
+// 	}
+// };
+
+
+// export const getPackages = async (req, res) => {
+// 	const { carrierCode } = req.params;
+
+// 	try {
+// 		const authToken = Buffer.from(
+// 			`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
+// 		).toString("base64");
+
+// 		const response = await axios.get(
+// 			`https://ssapi.shipstation.com/carriers/listpackages?carrierCode=${carrierCode}`,
+// 			{
+// 				headers: {
+// 					Authorization: `Basic ${authToken}`,
+// 				},
+// 			}
+// 		);
+
+// 		res.status(200).json({ success: true, packages: response.data });
+// 	} catch (error) {
+// 		console.error("Error fetching packages:", error.response?.data || error.message);
+// 		res.status(500).json({ error: "Failed to fetch package list" });
+// 	}
+// };
+
+
 
 // Get orders for a user
 export const getOrdersByUser = async (req, res) => {
@@ -136,7 +216,7 @@ export const getOrdersByUser = async (req, res) => {
 	}
 };
 
-
+ 
 export const getSoldItems = async (req, res) => {
 	const { sellerId } = req.params;
 
@@ -213,6 +293,7 @@ export const getPurchaseItems = async (req, res) => {
 				buyerName: `${order.shippingAddress?.name || "Unknown Buyer"}`,
 				productId: product.productId?._id || null,
 				productName: product.productId?.name || product.name || "Unknown Product",
+				productBrand: product.productId?.brand || product.brand || "Unknown Brand",
 				productPrice: product.productId?.price || product.price || 0,
 				charityProfit: product.charityProfit || 0,
 				adminFee: product.adminFee || 0,
@@ -253,6 +334,9 @@ export const getPurchaseItems = async (req, res) => {
 	}
 };
 
+
+
+
 // Get total sold items and revenue
 export const getTotalSoldItems = async (_req, res) => {
 	const { sellerId } = req.params;
@@ -280,6 +364,7 @@ export const getTotalSoldItems = async (_req, res) => {
 						buyerId: order.buyerId,
 						productId: product.productId?._id || null,
 						productName: product.productId?.name || "Unknown Product",
+						productBrand: product.productId?.brand || "Unknown Brand",
 						sellerId: product.seller?._id || null,
 						sellerName: `${product.seller?.firstName || "Unknown"} ${
 							product.seller?.lastName || ""
@@ -486,23 +571,7 @@ export const updateOrderStatusToDelivered = async (req, res) => {
 }; 
 
 
-export const getCarriers = async (_req, res) => {
-	try {
-		const response = await shipStationClient.get("/carriers");
-		res.status(200).json({ success: true, carriers: response.data });
-	} catch (error) {
-		console.error(
-			"Error fetching carriers:",
-			error.response?.data || error.message,
-		);
-		res
-			.status(500)
-			.json({
-				error: "Failed to fetch carriers",
-				details: error.response?.data || error.message,
-			});
-	}
-};
+
 export const getOrderById = async (req, res) => {
 	const { orderId } = req.params;
 
@@ -523,3 +592,53 @@ export const getOrderById = async (req, res) => {
 	}
 };
 
+// Get total sold products and sales revenue (Admin View)
+export const getTotalSalesStats = async (_req, res) => {
+	try {
+		// Find all completed orders
+		const orders = await Order.find({ status: { $in: ["Delivered", "OrderConfirmed"] } });
+
+		// Aggregate statistics
+		const stats = orders.reduce(
+			(acc, order) => {
+				order.products.forEach(product => {
+					// Increment total sold quantity and revenue
+					acc.totalProductsSold += product.quantity;
+					acc.totalRevenue += product.totalProductCost;
+
+					// Collect product details for a breakdown
+					acc.productDetails.push({
+						productId: product.productId?._id || null,
+						productName: product.productId?.name || "Unknown Product",
+						quantitySold: product.quantity,
+						totalRevenueGenerated: product.totalProductCost,
+						sellerId: product.seller?._id || null,
+						sellerName: product.seller
+							? `${product.seller.firstName} ${product.seller.lastName}`
+							: "Unknown Seller",
+						charityId: product.charity?._id || null,
+						charityName: product.charity?.charityName || "Unknown Charity",
+						status: order.status,
+						createdAt: order.createdAt,
+					});
+				});
+				return acc;
+			},
+			{
+				totalProductsSold: 0, // Total products sold
+				totalRevenue: 0, // Total revenue generated
+				productDetails: [], // Breakdown of product sales
+			},
+		);
+
+		res.status(200).json({
+			success: true,
+			totalProductsSold: stats.totalProductsSold,
+			totalRevenue: stats.totalRevenue,
+			productDetails: stats.productDetails,
+		});
+	} catch (error) {
+		console.error("Error fetching sales stats:", error);
+		res.status(500).json({ error: "Failed to fetch sales statistics" });
+	}
+};

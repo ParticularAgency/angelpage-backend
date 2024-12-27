@@ -9,6 +9,7 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@reduxjs/toolkit": "^2.5.0",
     "@sendgrid/mail": "^8.1.4",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^2.4.3",
@@ -27,6 +28,7 @@
     "next-auth": "^4.24.10",
     "nodemailer": "^6.9.16",
     "nodemailer-sendgrid": "^1.0.3",
+    "react-redux": "^9.2.0",
     "swiper": "^11.1.15",
     "uuid": "^11.0.3",
     "xlsx": "^0.18.5"

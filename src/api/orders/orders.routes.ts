@@ -2,6 +2,8 @@ import { Router } from "express";
 import {
 	createOrder,
 	// getCarriers,
+	// getPackages,
+	// getServices,
 	// trackPackage,
 	// schedulePickup,
 	// getLabel,
@@ -17,6 +19,7 @@ import {
 	// getCarriers,
 	// getCarrierServices,
 	// generateTrackingNumber,
+	getTotalSalesStats,
 	getOrderById,
 	updateOrderStatusToDelivered,
 	getAllOrdersForSeller,
@@ -29,6 +32,14 @@ const router = Router();
 // Create a new order
 router.post("/create", createOrder);
 
+// router.get("/carrier", getCarriers);
+
+// Route to get services for a specific carrier
+// router.get("/carriers/:carrierCode/services", getServices);
+
+// Route to get packages for a specific carrier
+// router.get("/carriers/:carrierCode/packages", getPackages);
+
 router.get("/seller/:sellerId/orders", authMiddleware(), getAllOrdersForSeller);
 
 // Get orders for a specific user
@@ -38,11 +49,13 @@ router.get("/user/:userId", getOrdersByUser);
 router.get("/seller/:sellerId/sold", authMiddleware(), getSoldItems);
 router.get("/buyer/:buyerId/orders", authMiddleware(), getPurchaseItems);
 router.get("/:orderId", authMiddleware(), getOrderById);
+
+
 router.patch(
 	"/:orderId/shipped",
 	authMiddleware(),
 	updateOrderStatusToShipped,
-);
+); 
 router.patch(
 	"/:orderId/delivered", 
 	authMiddleware(),
@@ -53,11 +66,14 @@ router.patch(
 // Get total sold items
 router.get("/items/sold", getTotalSoldItems);
 
+
+// get admin view total sales and reveniue states
+router.get("/admin/sales-total", getTotalSalesStats);
+
 // Get buyer purchases
 router.get("/buyer/:buyerId/purchases", getBuyerPurchases);
 
 
-// router.get("/carriers", getCarriers);
 // router.get("/carriers/:carrierId/services", getCarrierServices);
 // router.post("/pickups", schedulePickup);
 // router.post("/shipments", generateTrackingNumber);

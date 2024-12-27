@@ -4,6 +4,7 @@ import {
 	getProductOnCart,
 	removeProductOnCart,
 	clearProductOnCart,
+	updateQuantityInCart,
 } from "./cart.controller";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 
@@ -19,5 +20,7 @@ router.post("/remove", authMiddleware(), removeProductOnCart);
 
 // Clear all products from the cart
 router.post("/clear", authMiddleware(), clearProductOnCart);
+router.post("/update-quantity", authMiddleware(), updateQuantityInCart);
+
 
 export default router;

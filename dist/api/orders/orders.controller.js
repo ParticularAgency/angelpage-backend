@@ -12,10 +12,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getOrderById = exports.getCarriers = exports.updateOrderStatusToDelivered = exports.updateOrderStatusToShipped = exports.getAllOrdersForSeller = exports.getBuyerPurchases = exports.getTotalSoldItems = exports.getPurchaseItems = exports.getSoldItems = exports.getOrdersByUser = exports.createOrder = void 0;
+exports.getTotalSalesStats = exports.getOrderById = exports.updateOrderStatusToDelivered = exports.updateOrderStatusToShipped = exports.getAllOrdersForSeller = exports.getBuyerPurchases = exports.getTotalSoldItems = exports.getPurchaseItems = exports.getSoldItems = exports.getOrdersByUser = exports.createOrder = void 0;
+const axios_1 = __importDefault(require("axios"));
+const buffer_1 = require("buffer");
 const Order_model_1 = __importDefault(require("../../models/Order.model"));
 const Cart_model_1 = __importDefault(require("../../models/Cart.model"));
-const shipstation_1 = require("../../utils/shipstation");
+// import { shipStationClient } from "../../utils/shipstation";
 // Create a new order
 const createOrder = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { buyerId, products, shippingAddress, paymentMethod,
@@ -61,40 +63,43 @@ const createOrder = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
         yield newOrder.save();
         // Clear the cart for the user after successful order creation
         yield Cart_model_1.default.findOneAndUpdate({ userId: buyerId }, { items: [] });
-        // // Create a shipment in ShipStation
-        // const shipmentData = {
-        // 	// carrierCode,
-        // 	// serviceCode,
-        // 	packageCode: "package", // Adjust as needed
-        // 	confirmation: "delivery",
+        // // Generate label for the created order
+        // const authToken = Buffer.from(
+        // 	`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
+        // ).toString("base64");
+        // const labelPayload = {
+        // 	orderId: newOrder._id, // Replace with actual ShipStation order ID if needed
+        // 	carrierCode,
+        // 	serviceCode,
         // 	shipDate: new Date().toISOString().split("T")[0],
-        // 	weight: { value: 1, units: "ounces" }, // Example weight
-        // 	dimensions: { units: "inches", length: 10, width: 5, height: 5 }, // Example dimensions
-        // 	shipFrom: {
-        // 		name: "Your Company",
-        // 		address1: "123 Warehouse St",
-        // 		city: "YourCity",
-        // 		state: "YourState",
-        // 		postalCode: "12345",
-        // 		country: "US",
+        // 	weight: {
+        // 		value: 2, // Replace with actual weight
+        // 		units: "pounds",
         // 	},
-        // 	shipTo: shippingAddress,
+        // 	testLabel: false,
         // };
-        // const shipStationResponse = await shipStationClient.createLabel(
-        // 	shipmentData,
+        // const labelResponse = await axios.post(
+        // 	"https://ssapi.shipstation.com/orders/createlabelfororder",
+        // 	labelPayload,
+        // 	{
+        // 		headers: {
+        // 			Authorization: `Basic ${authToken}`,
+        // 			"Content-Type": "application/json",
+        // 		},
+        // 	}
         // );
-        // // Update the order with shipping details
-        // newOrder.trackingNumber = shipStationResponse.trackingNumber;
-        // newOrder.labelId = shipStationResponse.labelId;
-        // newOrder.labelUrl = shipStationResponse.labelUrl;
-        // newOrder.packageInfo = shipStationResponse.packageInfo;
-        // newOrder.pickupInfo = shipStationResponse.pickupInfo;
-        // newOrder.status = "LabelCreated";
+        // const { trackingNumber, labelUrl } = labelResponse.data;
+        // // Update the order with the tracking number and label URL
+        // newOrder.trackingNumber = trackingNumber;
+        // newOrder.labelUrl = labelUrl;
+        // newOrder.status = "OrderConfirmed";
         // await newOrder.save();
         res.status(201).json({
             success: true,
-            message: "Order created successfully",
+            message: "Order created and shipping label generated successfully",
             order: newOrder,
+            // trackingNumber,
+            // labelUrl,
         });
     }
     catch (error) {
@@ -103,6 +108,64 @@ const createOrder = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
     }
 });
 exports.createOrder = createOrder;
+// Get carriers from ShipStation
+// export const getCarriers = async (_req, res) => {
+// 	try {
+// 		const authToken = Buffer.from(
+// 			`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
+// 		).toString("base64");
+// 		const response = await axios.get("https://ssapi.shipstation.com/carriers", {
+// 			headers: {
+// 				Authorization: `Basic ${authToken}`,
+// 			},
+// 		});
+// 		// Return carriers to the frontend
+// 		res.status(200).json({ success: true, carriers: response.data });
+// 	} catch (error) {
+// 		console.error("Error fetching carriers from ShipStation:", error.response?.data || error.message);
+// 		res.status(500).json({ error: "Failed to fetch carrier list" });
+// 	}
+// };
+// export const getServices = async (req, res) => {
+// 	const { carrierCode } = req.params;
+// 	try {
+// 		const authToken = Buffer.from(
+// 			`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
+// 		).toString("base64");
+// 		const response = await axios.get(
+// 			`https://ssapi.shipstation.com/carriers/listservices?carrierCode=${carrierCode}`,
+// 			{
+// 				headers: {
+// 					Authorization: `Basic ${authToken}`,
+// 				},
+// 			}
+// 		);
+// 		res.status(200).json({ success: true, services: response.data });
+// 	} catch (error) {
+// 		console.error("Error fetching services:", error.response?.data || error.message);
+// 		res.status(500).json({ error: "Failed to fetch service list" });
+// 	}
+// };
+// export const getPackages = async (req, res) => {
+// 	const { carrierCode } = req.params;
+// 	try {
+// 		const authToken = Buffer.from(
+// 			`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
+// 		).toString("base64");
+// 		const response = await axios.get(
+// 			`https://ssapi.shipstation.com/carriers/listpackages?carrierCode=${carrierCode}`,
+// 			{
+// 				headers: {
+// 					Authorization: `Basic ${authToken}`,
+// 				},
+// 			}
+// 		);
+// 		res.status(200).json({ success: true, packages: response.data });
+// 	} catch (error) {
+// 		console.error("Error fetching packages:", error.response?.data || error.message);
+// 		res.status(500).json({ error: "Failed to fetch package list" });
+// 	}
+// };
 // Get orders for a user
 const getOrdersByUser = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { userId } = req.params;
@@ -183,32 +246,33 @@ const getPurchaseItems = (req, res) => __awaiter(void 0, void 0, void 0, functio
         }
         // Transform data to include additional details
         const purchaseItems = orders.flatMap(order => order.products.map(product => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u;
             return ({
                 orderId: order._id,
                 buyerId: order.buyerId,
                 buyerName: `${((_a = order.shippingAddress) === null || _a === void 0 ? void 0 : _a.name) || "Unknown Buyer"}`,
                 productId: ((_b = product.productId) === null || _b === void 0 ? void 0 : _b._id) || null,
                 productName: ((_c = product.productId) === null || _c === void 0 ? void 0 : _c.name) || product.name || "Unknown Product",
-                productPrice: ((_d = product.productId) === null || _d === void 0 ? void 0 : _d.price) || product.price || 0,
+                productBrand: ((_d = product.productId) === null || _d === void 0 ? void 0 : _d.brand) || product.brand || "Unknown Brand",
+                productPrice: ((_e = product.productId) === null || _e === void 0 ? void 0 : _e.price) || product.price || 0,
                 charityProfit: product.charityProfit || 0,
                 adminFee: product.adminFee || 0,
-                productImages: ((_e = product.productId) === null || _e === void 0 ? void 0 : _e.images) || [],
-                sellerId: ((_f = product.seller) === null || _f === void 0 ? void 0 : _f._id) || null,
-                sellerName: `${((_g = product.seller) === null || _g === void 0 ? void 0 : _g.firstName) || "Unknown"} ${((_h = product.seller) === null || _h === void 0 ? void 0 : _h.lastName) || ""}`.trim(),
-                sellerEmail: ((_j = product.seller) === null || _j === void 0 ? void 0 : _j.email) || null,
-                sellerProfileImage: ((_k = product.seller) === null || _k === void 0 ? void 0 : _k.profileImage) || null,
-                charityId: ((_l = product.charity) === null || _l === void 0 ? void 0 : _l._id) || null,
-                charityName: ((_m = product.charity) === null || _m === void 0 ? void 0 : _m.charityName) || "Unknown Charity",
-                charityProfileImage: ((_o = product.charity) === null || _o === void 0 ? void 0 : _o.profileImage) || null,
+                productImages: ((_f = product.productId) === null || _f === void 0 ? void 0 : _f.images) || [],
+                sellerId: ((_g = product.seller) === null || _g === void 0 ? void 0 : _g._id) || null,
+                sellerName: `${((_h = product.seller) === null || _h === void 0 ? void 0 : _h.firstName) || "Unknown"} ${((_j = product.seller) === null || _j === void 0 ? void 0 : _j.lastName) || ""}`.trim(),
+                sellerEmail: ((_k = product.seller) === null || _k === void 0 ? void 0 : _k.email) || null,
+                sellerProfileImage: ((_l = product.seller) === null || _l === void 0 ? void 0 : _l.profileImage) || null,
+                charityId: ((_m = product.charity) === null || _m === void 0 ? void 0 : _m._id) || null,
+                charityName: ((_o = product.charity) === null || _o === void 0 ? void 0 : _o.charityName) || "Unknown Charity",
+                charityProfileImage: ((_p = product.charity) === null || _p === void 0 ? void 0 : _p.profileImage) || null,
                 quantity: product.quantity,
                 totalProductCost: product.totalProductCost || 0,
                 shippingAddress: {
-                    name: ((_p = order.shippingAddress) === null || _p === void 0 ? void 0 : _p.name) || "",
-                    address: ((_q = order.shippingAddress) === null || _q === void 0 ? void 0 : _q.address) || "",
-                    city: ((_r = order.shippingAddress) === null || _r === void 0 ? void 0 : _r.city) || "",
-                    country: ((_s = order.shippingAddress) === null || _s === void 0 ? void 0 : _s.country) || "",
-                    postcode: ((_t = order.shippingAddress) === null || _t === void 0 ? void 0 : _t.postcode) || "",
+                    name: ((_q = order.shippingAddress) === null || _q === void 0 ? void 0 : _q.name) || "",
+                    address: ((_r = order.shippingAddress) === null || _r === void 0 ? void 0 : _r.address) || "",
+                    city: ((_s = order.shippingAddress) === null || _s === void 0 ? void 0 : _s.city) || "",
+                    country: ((_t = order.shippingAddress) === null || _t === void 0 ? void 0 : _t.country) || "",
+                    postcode: ((_u = order.shippingAddress) === null || _u === void 0 ? void 0 : _u.postcode) || "",
                 },
                 paymentMethod: order.paymentMethod || null,
                 orderStatus: order.orderStatus || "Unknown",
@@ -243,7 +307,7 @@ const getTotalSoldItems = (_req, res) => __awaiter(void 0, void 0, void 0, funct
         // Aggregate total sold items and details
         const totalDetails = orders.reduce((acc, order) => {
             order.products.forEach(product => {
-                var _a, _b, _c, _d, _e, _f, _g, _h;
+                var _a, _b, _c, _d, _e, _f, _g, _h, _j;
                 // Increment total quantity and revenue
                 acc.totalQuantity += product.quantity;
                 acc.totalRevenue += product.totalProductCost;
@@ -253,13 +317,14 @@ const getTotalSoldItems = (_req, res) => __awaiter(void 0, void 0, void 0, funct
                     buyerId: order.buyerId,
                     productId: ((_a = product.productId) === null || _a === void 0 ? void 0 : _a._id) || null,
                     productName: ((_b = product.productId) === null || _b === void 0 ? void 0 : _b.name) || "Unknown Product",
-                    sellerId: ((_c = product.seller) === null || _c === void 0 ? void 0 : _c._id) || null,
-                    sellerName: `${((_d = product.seller) === null || _d === void 0 ? void 0 : _d.firstName) || "Unknown"} ${((_e = product.seller) === null || _e === void 0 ? void 0 : _e.lastName) || ""}`.trim(),
+                    productBrand: ((_c = product.productId) === null || _c === void 0 ? void 0 : _c.brand) || "Unknown Brand",
+                    sellerId: ((_d = product.seller) === null || _d === void 0 ? void 0 : _d._id) || null,
+                    sellerName: `${((_e = product.seller) === null || _e === void 0 ? void 0 : _e.firstName) || "Unknown"} ${((_f = product.seller) === null || _f === void 0 ? void 0 : _f.lastName) || ""}`.trim(),
                     quantity: product.quantity,
-                    itemPrice: ((_f = product.productId) === null || _f === void 0 ? void 0 : _f.price) || 0,
+                    itemPrice: ((_g = product.productId) === null || _g === void 0 ? void 0 : _g.price) || 0,
                     totalProductCost: product.totalProductCost,
-                    charityId: ((_g = product.charity) === null || _g === void 0 ? void 0 : _g._id) || null,
-                    charityName: ((_h = product.charity) === null || _h === void 0 ? void 0 : _h.charityName) || "Unknown Charity",
+                    charityId: ((_h = product.charity) === null || _h === void 0 ? void 0 : _h._id) || null,
+                    charityName: ((_j = product.charity) === null || _j === void 0 ? void 0 : _j.charityName) || "Unknown Charity",
                     orderDate: order.createdAt,
                 });
             });
@@ -435,23 +500,6 @@ const updateOrderStatusToDelivered = (req, res) => __awaiter(void 0, void 0, voi
     }
 });
 exports.updateOrderStatusToDelivered = updateOrderStatusToDelivered;
-const getCarriers = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b;
-    try {
-        const response = yield shipstation_1.shipStationClient.get("/carriers");
-        res.status(200).json({ success: true, carriers: response.data });
-    }
-    catch (error) {
-        console.error("Error fetching carriers:", ((_a = error.response) === null || _a === void 0 ? void 0 : _a.data) || error.message);
-        res
-            .status(500)
-            .json({
-            error: "Failed to fetch carriers",
-            details: ((_b = error.response) === null || _b === void 0 ? void 0 : _b.data) || error.message,
-        });
-    }
-});
-exports.getCarriers = getCarriers;
 const getOrderById = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { orderId } = req.params;
     try {
@@ -470,3 +518,50 @@ const getOrderById = (req, res) => __awaiter(void 0, void 0, void 0, function* (
     }
 });
 exports.getOrderById = getOrderById;
+// Get total sold products and sales revenue (Admin View)
+const getTotalSalesStats = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        // Find all completed orders
+        const orders = yield Order_model_1.default.find({ status: { $in: ["Delivered", "OrderConfirmed"] } });
+        // Aggregate statistics
+        const stats = orders.reduce((acc, order) => {
+            order.products.forEach(product => {
+                var _a, _b, _c, _d, _e;
+                // Increment total sold quantity and revenue
+                acc.totalProductsSold += product.quantity;
+                acc.totalRevenue += product.totalProductCost;
+                // Collect product details for a breakdown
+                acc.productDetails.push({
+                    productId: ((_a = product.productId) === null || _a === void 0 ? void 0 : _a._id) || null,
+                    productName: ((_b = product.productId) === null || _b === void 0 ? void 0 : _b.name) || "Unknown Product",
+                    quantitySold: product.quantity,
+                    totalRevenueGenerated: product.totalProductCost,
+                    sellerId: ((_c = product.seller) === null || _c === void 0 ? void 0 : _c._id) || null,
+                    sellerName: product.seller
+                        ? `${product.seller.firstName} ${product.seller.lastName}`
+                        : "Unknown Seller",
+                    charityId: ((_d = product.charity) === null || _d === void 0 ? void 0 : _d._id) || null,
+                    charityName: ((_e = product.charity) === null || _e === void 0 ? void 0 : _e.charityName) || "Unknown Charity",
+                    status: order.status,
+                    createdAt: order.createdAt,
+                });
+            });
+            return acc;
+        }, {
+            totalProductsSold: 0, // Total products sold
+            totalRevenue: 0, // Total revenue generated
+            productDetails: [], // Breakdown of product sales
+        });
+        res.status(200).json({
+            success: true,
+            totalProductsSold: stats.totalProductsSold,
+            totalRevenue: stats.totalRevenue,
+            productDetails: stats.productDetails,
+        });
+    }
+    catch (error) {
+        console.error("Error fetching sales stats:", error);
+        res.status(500).json({ error: "Failed to fetch sales statistics" });
+    }
+});
+exports.getTotalSalesStats = getTotalSalesStats;

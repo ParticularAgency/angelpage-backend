@@ -115,3 +115,47 @@ export const clearProductOnCart = async (req: Request, res: Response) => {
 		res.status(500).json({ error: "Internal Server Error" });
 	}
 };
+
+export const updateQuantityInCart = async (req: Request, res: Response) => {
+	const { userId, productId, quantityChange } = req.body;
+
+	try {
+		const cart = await Cart.findOne({ userId });
+
+		if (!cart) {
+			return res.status(404).json({ error: "Cart not found" });
+		}
+
+		const itemIndex = cart.items.findIndex(
+			item => item.productId.toString() === productId,
+		);
+
+		if (itemIndex > -1) {
+			// Update the quantity
+			cart.items[itemIndex].quantity += quantityChange;
+
+			// Remove item if quantity goes below 1
+			if (cart.items[itemIndex].quantity < 1) {
+				cart.items.splice(itemIndex, 1);
+			}
+
+			// Save the updated cart
+			await cart.save();
+
+			// Return the entire cart for consistency
+			const updatedCart = await Cart.findOne({ userId }).populate({
+				path: "items.productId",
+				select: "name price images",
+			});
+
+			return res
+				.status(200)
+				.json({ message: "Quantity updated successfully", cart: updatedCart });
+		} else {
+			return res.status(404).json({ error: "Product not found in cart" });
+		}
+	} catch (error) {
+		console.error("Error updating quantity:", error);
+		return res.status(500).json({ error: "Internal Server Error" });
+	}
+};

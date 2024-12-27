@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.clearProductOnCart = exports.removeProductOnCart = exports.getProductOnCart = exports.addProductOnCart = void 0;
+exports.updateQuantityInCart = exports.clearProductOnCart = exports.removeProductOnCart = exports.getProductOnCart = exports.addProductOnCart = void 0;
 const Cart_model_1 = __importDefault(require("../../models/Cart.model"));
 // Add product to cart// Add or Update Product Quantity in Cart
 const addProductOnCart = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -118,3 +118,39 @@ const clearProductOnCart = (req, res) => __awaiter(void 0, void 0, void 0, funct
     }
 });
 exports.clearProductOnCart = clearProductOnCart;
+const updateQuantityInCart = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { userId, productId, quantityChange } = req.body;
+    try {
+        const cart = yield Cart_model_1.default.findOne({ userId });
+        if (!cart) {
+            return res.status(404).json({ error: "Cart not found" });
+        }
+        const itemIndex = cart.items.findIndex(item => item.productId.toString() === productId);
+        if (itemIndex > -1) {
+            // Update the quantity
+            cart.items[itemIndex].quantity += quantityChange;
+            // Remove item if quantity goes below 1
+            if (cart.items[itemIndex].quantity < 1) {
+                cart.items.splice(itemIndex, 1);
+            }
+            // Save the updated cart
+            yield cart.save();
+            // Return the entire cart for consistency
+            const updatedCart = yield Cart_model_1.default.findOne({ userId }).populate({
+                path: "items.productId",
+                select: "name price images",
+            });
+            return res
+                .status(200)
+                .json({ message: "Quantity updated successfully", cart: updatedCart });
+        }
+        else {
+            return res.status(404).json({ error: "Product not found in cart" });
+        }
+    }
+    catch (error) {
+        console.error("Error updating quantity:", error);
+        return res.status(500).json({ error: "Internal Server Error" });
+    }
+});
+exports.updateQuantityInCart = updateQuantityInCart;
