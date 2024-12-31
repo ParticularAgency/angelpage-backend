@@ -12,6 +12,9 @@ import {
 	getLiveProducts,
 	getTotalPlatformUsersWithDuration,
 	deleteUser,
+	getTotalPlatformUsersWithMonthlyChanges,
+	getPlatformUserSessionsAnalytics,
+	getReturningUserAnalytics,
 } from "./admin.controller";
 import multer from "multer";
 
@@ -41,5 +44,10 @@ router.get("/products/listings", authMiddleware(), getLiveProducts);
 router.get("/users/overview", authMiddleware(), getTotalPlatformUsersWithDuration);
 
 router.delete("/users/:userId", authMiddleware(), deleteUser);
+
+router.get('/users/analytics', authMiddleware(), getTotalPlatformUsersWithMonthlyChanges);
+
+router.get("/analytics/returning-users-weekly", authMiddleware(), getReturningUserAnalytics);
+router.get("/analytics/user-sessions-weekly", authMiddleware(), getPlatformUserSessionsAnalytics);
 
 export default router;

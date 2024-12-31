@@ -1,9 +1,9 @@
 import { Router } from "express";
 import {
 	createOrder,
-	// getCarriers,
+	getCarriers,
 	// getPackages,
-	// getServices,
+	getServices,
 	// trackPackage,
 	// schedulePickup,
 	// getLabel,
@@ -15,10 +15,10 @@ import {
 	getBuyerPurchases,
 	// getCarrierServices,
 	// getCarrierPackages,
-	// schedulePickup,
-	// getCarriers,
-	// getCarrierServices,
-	// generateTrackingNumber,
+	getCurretnUserSoldItems,
+	getCurrentUserPurchaseItems,
+	getRates,
+	createLabelForOrder,
 	getTotalSalesStats,
 	getOrderById,
 	updateOrderStatusToDelivered,
@@ -32,12 +32,17 @@ const router = Router();
 // Create a new order
 router.post("/create", createOrder);
 
-// router.get("/carrier", getCarriers);
+// creat label for order endpoint
+router.post("/orders/get-shipping-rate", getRates);
+
+router.post("/orders/:orderId/createlabel", createLabelForOrder);
+
+router.get("/carrier", getCarriers);
 
 // Route to get services for a specific carrier
-// router.get("/carriers/:carrierCode/services", getServices);
+router.get("/carriers/:carrierCode/services", getServices);
 
-// Route to get packages for a specific carrier
+// Route to get packages for a specific carrier 
 // router.get("/carriers/:carrierCode/packages", getPackages);
 
 router.get("/seller/:sellerId/orders", authMiddleware(), getAllOrdersForSeller);
@@ -76,7 +81,17 @@ router.get("/buyer/:buyerId/purchases", getBuyerPurchases);
 
 // router.get("/carriers/:carrierId/services", getCarrierServices);
 // router.post("/pickups", schedulePickup);
-// router.post("/shipments", generateTrackingNumber);
+
+router.get(
+	"/users/:sellerId/dashboard-sales-analytics",
+	authMiddleware(),
+	getCurretnUserSoldItems,
+);
+router.get(
+	"/users/:buyerId/dashboard-purchase-analytics",
+	authMiddleware(),
+	getCurrentUserPurchaseItems,
+);
 
 
 export default router;

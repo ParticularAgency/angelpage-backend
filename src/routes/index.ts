@@ -10,6 +10,7 @@ import cartRoutes from "../api/cart/cart.routes"; // Adjust the path as necessar
 import orderRoutes from "../api/orders/orders.routes"; // Adjust the path as necessary, based on your folder structure
 import emailRoutes from "../api/email/email.routes"; // Adjust the path as necessary, based on your folder structure
 import searchRoutes from "../api/Search/search.routes"; // Adjust the path as necessary, based on your folder structure
+import notificationRoutes from "../api/notifications/notifications.routes"; // Adjust the path as necessary, based on your folder structure
 
 const router = Router();
 
@@ -30,6 +31,7 @@ router.use("/cart", cartRoutes); // All routes under "/auth" will be handled by 
 router.use("/order", orderRoutes); // All routes under "/auth" will be handled by authRoutes
 router.use("/email", emailRoutes); // All routes under "/auth" will be handled by authRoutes
 router.use("/search", searchRoutes); // All routes under "/auth" will be handled by authRoutes
+router.use("/notification", notificationRoutes); // All routes under "/auth" will be handled by authRoutes
 
 export default router;
  

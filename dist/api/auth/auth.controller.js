@@ -30,11 +30,12 @@ const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const User_model_1 = __importDefault(require("../../models/User.model"));
 const Charity_model_1 = __importDefault(require("../../models/Charity.model"));
 const Admin_model_1 = __importDefault(require("../../models/Admin.model"));
+const LoginActivity_model_1 = __importDefault(require("../../models/LoginActivity.model"));
 const email_1 = require("../../utils/email");
 const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
 // Utility to generate a token
 const generateToken = (userId, role) => {
-    return jsonwebtoken_1.default.sign({ userId, role }, JWT_SECRET, { expiresIn: "30m" });
+    return jsonwebtoken_1.default.sign({ userId, role }, JWT_SECRET, { expiresIn: "1d" });
 };
 // Utility to compare passwords
 const comparePassword = (password, hashedPassword) => __awaiter(void 0, void 0, void 0, function* () {
@@ -208,6 +209,11 @@ const loginUser = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
             inputPassword: password,
             storedHashedPassword: user.password,
             isMatch,
+        });
+        // Record login activity
+        yield LoginActivity_model_1.default.create({
+            userId: user._id,
+            role: user.role,
         });
         if (!isMatch) {
             return res.status(400).json({ message: "Invalid email or password" });

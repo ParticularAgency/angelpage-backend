@@ -6,10 +6,13 @@ const auth_middleware_1 = require("../../middlewares/auth.middleware");
 const router = (0, express_1.Router)();
 // Create a new order
 router.post("/create", orders_controller_1.createOrder);
-// router.get("/carrier", getCarriers);
+// creat label for order endpoint
+router.post("/orders/get-shipping-rate", orders_controller_1.getRates);
+router.post("/orders/:orderId/createlabel", orders_controller_1.createLabelForOrder);
+router.get("/carrier", orders_controller_1.getCarriers);
 // Route to get services for a specific carrier
-// router.get("/carriers/:carrierCode/services", getServices);
-// Route to get packages for a specific carrier
+router.get("/carriers/:carrierCode/services", orders_controller_1.getServices);
+// Route to get packages for a specific carrier 
 // router.get("/carriers/:carrierCode/packages", getPackages);
 router.get("/seller/:sellerId/orders", (0, auth_middleware_1.authMiddleware)(), orders_controller_1.getAllOrdersForSeller);
 // Get orders for a specific user
@@ -28,5 +31,6 @@ router.get("/admin/sales-total", orders_controller_1.getTotalSalesStats);
 router.get("/buyer/:buyerId/purchases", orders_controller_1.getBuyerPurchases);
 // router.get("/carriers/:carrierId/services", getCarrierServices);
 // router.post("/pickups", schedulePickup);
-// router.post("/shipments", generateTrackingNumber);
+router.get("/users/:sellerId/dashboard-sales-analytics", (0, auth_middleware_1.authMiddleware)(), orders_controller_1.getCurretnUserSoldItems);
+router.get("/users/:buyerId/dashboard-purchase-analytics", (0, auth_middleware_1.authMiddleware)(), orders_controller_1.getCurrentUserPurchaseItems);
 exports.default = router;

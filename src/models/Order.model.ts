@@ -1,12 +1,13 @@
 import mongoose, { Schema, Document, Types } from "mongoose";
 
-// Interfaces
 interface ShippingAddress {
 	name: string;
 	address: string;
 	city: string;
+	state?: string;
 	country: string;
 	postcode: string;
+	email?: string;
 }
 
 interface PaymentMethod {
@@ -40,33 +41,42 @@ export interface IOrderDocument extends Document {
 	buyerId: Types.ObjectId;
 	products: OrderedProduct[];
 	totalAmount: number;
+	grandTotal: number;
 	paymentStatus: "Pending" | "Paid" | "Failed";
 	paymentConfirmed: boolean;
 	shippingAddress: ShippingAddress;
 	paymentMethod: PaymentMethod;
-	createdAt: Date;
+	shipStationOrderId?: number;
 	carrierCode?: string;
 	serviceCode?: string;
 	trackingNumber?: string;
 	labelId?: string;
 	labelUrl?: string;
+	labelData?: string;
+	shipmentId?: string;
+	shipmentCost?: number;
+	insuranceCost?: number;
 	packageInfo?: object;
 	pickupInfo?: object;
 	orderStatus:
+		| "OrderPlaced"
 		| "OrderConfirmed"
 		| "ItemShipped"
+		| "awaiting_shipment"
 		| "InTransit"
 		| "Delivered"
 		| "SalesProceeds";
 	status:
+		| "OrderPlaced"
 		| "OrderConfirmed"
 		| "LabelCreated"
 		| "PickedUp"
 		| "InTransit"
 		| "OutForDelivery"
 		| "Delivered"
-		| "SalesProceeds";
-
+		| "SalesProceeds"
+		| "ShipStationOrderFailed"
+		| "LabelFailed";
 	tags?: string[];
 }
 
@@ -86,8 +96,10 @@ const ShippingAddressSchema = new Schema<ShippingAddress>({
 	name: { type: String, required: true },
 	address: { type: String, required: true },
 	city: { type: String, required: true },
+	state: { type: String },
 	country: { type: String, required: true },
 	postcode: { type: String, required: true },
+	email: { type: String },
 });
 
 const PaymentMethodSchema = new Schema<PaymentMethod>({
@@ -135,6 +147,7 @@ const OrderSchema = new Schema<IOrderDocument>(
 		buyerId: { type: Schema.Types.ObjectId, ref: "User", required: true },
 		products: { type: [OrderedProductSchema], required: true },
 		totalAmount: { type: Number, required: true, min: 0 },
+		grandTotal: { type: Number, required: true, min: 0 },
 		paymentStatus: {
 			type: String,
 			enum: ["Pending", "Paid", "Failed"],
@@ -143,22 +156,36 @@ const OrderSchema = new Schema<IOrderDocument>(
 		paymentConfirmed: { type: Boolean, default: false },
 		shippingAddress: { type: ShippingAddressSchema, required: true },
 		paymentMethod: { type: PaymentMethodSchema, required: true },
-		createdAt: { type: Date, default: Date.now },
+		// createdAt: { type: Date, default: Date.now },
 		carrierCode: { type: String },
 		serviceCode: { type: String },
 		trackingNumber: { type: String },
 		labelId: { type: String },
 		labelUrl: { type: String },
+		labelData: { type: String },
+		shipStationOrderId: { type: Number },
+		shipmentId: { type: String },
+		shipmentCost: { type: Number },
+		insuranceCost: { type: Number },
 		packageInfo: { type: Object },
 		pickupInfo: { type: Object },
 		orderStatus: {
 			type: String,
-			enum: ["OrderConfirmed", "ItemShipped", "InTransit" ,  "Delivered", "SalesProceeds"],
-			default: "OrderConfirmed",
+			enum: [
+				"OrderPlaced",
+				"OrderConfirmed",
+				"awaiting_shipment",
+				"ItemShipped",
+				"InTransit",
+				"Delivered",
+				"SalesProceeds",
+			],
+			default: "OrderPlaced",
 		},
 		status: {
 			type: String,
 			enum: [
+				"OrderPlaced",
 				"OrderConfirmed",
 				"LabelCreated",
 				"PickedUp",
@@ -166,8 +193,10 @@ const OrderSchema = new Schema<IOrderDocument>(
 				"OutForDelivery",
 				"Delivered",
 				"SalesProceeds",
+				"LabelFailed",
+				"ShipStationOrderFailed",
 			],
-			default: "OrderConfirmed",
+			default: "OrderPlaced",
 		},
 		tags: { type: [String], default: [] },
 	},

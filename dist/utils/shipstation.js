@@ -18,6 +18,7 @@ const API_KEY = process.env.SHIPSTATION_API_KEY;
 const API_SECRET = process.env.SHIPSTATION_API_SECRET;
 const API_BASE_URL = "https://ssapi.shipstation.com/";
 const auth = Buffer.from(`${API_KEY}:${API_SECRET}`).toString("base64");
+console.log(auth);
 // const authToken = Buffer.from(`${API_KEY}:${API_SECRET}`).toString("base64");
 // axios
 // 	.get("https://ssapi.shipstation.com/carriers", {

@@ -1,6 +1,8 @@
-
+import { startOfMonth, endOfMonth, subMonths, startOfWeek, endOfWeek, subWeeks } from 'date-fns';
 import cloudinary from "../../config/cloudinary";
+import LoginActivity from '../../models/LoginActivity.model';
 import Admin from "../../models/Admin.model";
+import Order from "../../models/Order.model";
 import User from '../../models/User.model'; 
 import Charity from '../../models/Charity.model'; 
 import Product from "../../models/Product.model";
@@ -431,5 +433,254 @@ export const deleteUser = async (req, res) => {
 	} catch (error) {
 		console.error("Error deleting user:", error);
 		res.status(500).json({ message: "Failed to delete user" });
+	}
+};
+
+export const getTotalPlatformUsersWithMonthlyChanges = async (_req, res) => {
+	try {
+		// Get current and previous month date ranges
+		const now = new Date();
+
+		const currentMonthStart = startOfMonth(now);
+		const currentMonthEnd = endOfMonth(now);
+
+		const previousMonthStart = subMonths(currentMonthStart, 1);
+		const previousMonthEnd = subMonths(currentMonthEnd, 1);
+
+		// Query for current and previous month data
+		const [currentMonthUsers, previousMonthUsers] = await Promise.all([
+			User.countDocuments({ createdAt: { $gte: currentMonthStart, $lte: currentMonthEnd } }),
+			User.countDocuments({ createdAt: { $gte: previousMonthStart, $lte: previousMonthEnd } }),
+		]);
+
+		const [currentMonthCharities, previousMonthCharities] = await Promise.all([
+			Charity.countDocuments({ createdAt: { $gte: currentMonthStart, $lte: currentMonthEnd } }),
+			Charity.countDocuments({ createdAt: { $gte: previousMonthStart, $lte: previousMonthEnd } }),
+		]);
+
+		// Calculate total and percentage changes
+		const currentMonthTotal = currentMonthUsers + currentMonthCharities;
+		const previousMonthTotal = previousMonthUsers + previousMonthCharities;
+
+		const totalPlatformUsers = await User.countDocuments() + await Charity.countDocuments();
+
+		const percentageChange = calculatePercentageChange(currentMonthTotal, previousMonthTotal);
+
+		res.status(200).json({
+			success: true,
+			totalPlatformUsers,
+			currentMonth: {
+				total: currentMonthTotal,
+				users: currentMonthUsers,
+				charities: currentMonthCharities,
+			},
+			previousMonth: {
+				total: previousMonthTotal,
+				users: previousMonthUsers,
+				charities: previousMonthCharities,
+			},
+			percentageChange,
+		});
+	} catch (error) {
+		console.error('Error fetching platform users with monthly changes:', error);
+		res.status(500).json({
+			success: false,
+			message: 'Failed to fetch platform users with monthly changes',
+			error: error.message,
+		});
+	}
+};
+
+// Helper to calculate percentage change
+const calculatePercentageChange = (current, previous) => {
+	if (current === 0 && previous === 0) return 0;
+	if (previous === 0) return current > 0 ? 100 : 0;
+	return ((current - previous) / previous) * 100;
+};
+
+
+export const getReturningUserAnalytics = async (_req, res) => {
+	try {
+		console.log("Starting Returning User Analytics Calculation");
+
+		const now = new Date();
+		const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+		const currentWeekEnd = endOfWeek(now, { weekStartsOn: 1 });
+
+		const previousWeekStart = subWeeks(currentWeekStart, 1);
+		const previousWeekEnd = subWeeks(currentWeekEnd, 1);
+
+		console.log("Current Week:", { currentWeekStart, currentWeekEnd });
+		console.log("Previous Week:", { previousWeekStart, previousWeekEnd });
+
+		// Active entities (users and charities) for the current week
+		const currentWeekActiveIds = new Set([
+			...(await Product.distinct('seller', {
+				createdAt: { $gte: currentWeekStart, $lte: currentWeekEnd },
+			})),
+			...(await Order.distinct('buyerId', {
+				createdAt: { $gte: currentWeekStart, $lte: currentWeekEnd },
+			})),
+		]);
+		console.log("Current Week Active IDs:", currentWeekActiveIds);
+
+		// Returning entities for the current week
+		const currentWeekReturningUsers = await User.countDocuments({
+			_id: { $in: Array.from(currentWeekActiveIds) },
+			createdAt: { $lt: currentWeekStart }, // Must have been created before the week
+		}) + await Charity.countDocuments({
+			_id: { $in: Array.from(currentWeekActiveIds) },
+			createdAt: { $lt: currentWeekStart },
+		});
+		console.log("Current Week Returning Users:", currentWeekReturningUsers);
+
+		// Active entities (users and charities) for the previous week
+		const previousWeekActiveIds = new Set([
+			...(await Product.distinct('seller', {
+				createdAt: { $gte: previousWeekStart, $lte: previousWeekEnd },
+			})),
+			...(await Order.distinct('buyerId', {
+				createdAt: { $gte: previousWeekStart, $lte: previousWeekEnd },
+			})),
+		]);
+		console.log("Previous Week Active IDs:", previousWeekActiveIds);
+
+		// Returning entities for the previous week
+		const previousWeekReturningUsers = await User.countDocuments({
+			_id: { $in: Array.from(previousWeekActiveIds) },
+			createdAt: { $lt: previousWeekStart }, // Must have been created before the week
+		}) + await Charity.countDocuments({
+			_id: { $in: Array.from(previousWeekActiveIds) },
+			createdAt: { $lt: previousWeekStart },
+		});
+		console.log("Previous Week Returning Users:", previousWeekReturningUsers);
+
+		// Total returning entities (users and charities)
+		const totalPlatformReturningUsers = await User.countDocuments({
+			_id: {
+				$in: [
+					...(await Product.distinct('seller')),
+					...(await Order.distinct('buyerId')),
+				],
+			},
+			createdAt: { $lt: now }, // Must have been created before now
+		}) + await Charity.countDocuments({
+			_id: {
+				$in: [
+					...(await Product.distinct('seller')),
+					...(await Order.distinct('buyerId')),
+				],
+			},
+			createdAt: { $lt: now },
+		});
+		console.log("Total Platform Returning Users:", totalPlatformReturningUsers);
+
+		// Calculate weekly percentage change
+		const percentageChange = previousWeekReturningUsers > 0
+			? ((currentWeekReturningUsers - previousWeekReturningUsers) / previousWeekReturningUsers) * 100
+			: currentWeekReturningUsers > 0
+				? 100
+				: 0;
+
+		res.status(200).json({
+			success: true,
+			data: {
+				totalReturningUsers: currentWeekReturningUsers,
+				percentageChange: percentageChange.toFixed(2),
+				totalPlatformReturningUsers,
+			},
+		});
+	} catch (error) {
+		console.error('Error fetching returning user analytics:', error);
+		res.status(500).json({
+			success: false,
+			message: 'Failed to fetch returning user analytics',
+			error: error.message,
+		});
+	}
+};
+
+export const getPlatformUserSessionsAnalytics = async (_req, res) => {
+	try {
+		console.log("Starting Platform User Sessions Analytics Calculation");
+
+		const now = new Date();
+		const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+		const currentWeekEnd = endOfWeek(now, { weekStartsOn: 1 });
+
+		const previousWeekStart = subWeeks(currentWeekStart, 1);
+		const previousWeekEnd = subWeeks(currentWeekEnd, 1);
+
+		console.log("Current Week:", { currentWeekStart, currentWeekEnd });
+		console.log("Previous Week:", { previousWeekStart, previousWeekEnd });
+
+		// Active sessions for the current week (login + posting + purchasing)
+		const currentWeekActiveSessions = new Set([
+			...(await Product.distinct('seller', {
+				createdAt: { $gte: currentWeekStart, $lte: currentWeekEnd },
+			})),
+			...(await Order.distinct('buyerId', {
+				createdAt: { $gte: currentWeekStart, $lte: currentWeekEnd },
+			})),
+			...(await LoginActivity.distinct('userId', {
+				timestamp: { $gte: currentWeekStart, $lte: currentWeekEnd },
+			})),
+		]);
+		console.log("Current Week Active Sessions IDs:", currentWeekActiveSessions);
+
+		// Total sessions for the current week
+		const currentWeekSessionsCount = currentWeekActiveSessions.size;
+
+		// Active sessions for the previous week (login + posting + purchasing)
+		const previousWeekActiveSessions = new Set([
+			...(await Product.distinct('seller', {
+				createdAt: { $gte: previousWeekStart, $lte: previousWeekEnd },
+			})),
+			...(await Order.distinct('buyerId', {
+				createdAt: { $gte: previousWeekStart, $lte: previousWeekEnd },
+			})),
+			...(await LoginActivity.distinct('userId', {
+				timestamp: { $gte: currentWeekStart, $lte: currentWeekEnd },
+				role: { $in: ['USER', 'CHARITY'] },
+			})),
+		]);
+		console.log("Previous Week Active Sessions IDs:", previousWeekActiveSessions);
+
+		// Total sessions for the previous week
+		const previousWeekSessionsCount = previousWeekActiveSessions.size;
+
+		// Total platform sessions (distinct users and charities who have ever performed an action)
+		const totalPlatformSessions = new Set([
+			...(await Product.distinct('seller')),
+			...(await Order.distinct('buyerId')),
+			...(await LoginActivity.distinct('userId')),
+		]).size;
+
+		console.log("Total Platform Sessions:", totalPlatformSessions);
+
+		// Calculate weekly percentage change
+		const percentageChange = previousWeekSessionsCount > 0
+			? ((currentWeekSessionsCount - previousWeekSessionsCount) / previousWeekSessionsCount) * 100
+			: currentWeekSessionsCount > 0
+				? 100
+				: 0;
+
+		// Respond with analytics
+		res.status(200).json({
+			success: true,
+			data: {
+				totalPlatformSessions,
+				currentWeekSessions: currentWeekSessionsCount,
+				previousWeekSessions: previousWeekSessionsCount,
+				percentageChange: percentageChange.toFixed(2),
+			},
+		});
+	} catch (error) {
+		console.error('Error fetching platform user sessions analytics:', error);
+		res.status(500).json({
+			success: false,
+			message: 'Failed to fetch platform user sessions analytics',
+			error: error.message,
+		});
 	}
 };

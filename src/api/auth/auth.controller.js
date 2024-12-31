@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import User from "../../models/User.model";
 import Charity from "../../models/Charity.model";
 import Admin from "../../models/Admin.model";
+import LoginActivity from '../../models/LoginActivity.model';
 import {
 	sendPasswordResetEmail,
 	sendVerificationEmail,
@@ -228,6 +229,11 @@ export const loginUser = async (req, res) => {
 			inputPassword: password,
 			storedHashedPassword: user.password,
 			isMatch,
+		});
+	    // Record login activity
+		await LoginActivity.create({
+			userId: user._id,
+			role: user.role,
 		});
 
 		if (!isMatch) {

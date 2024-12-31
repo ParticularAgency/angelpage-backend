@@ -22,4 +22,7 @@ router.delete("/profile/payments/:paymentId", (0, auth_middleware_1.authMiddlewa
 router.get("/products/listings", (0, auth_middleware_1.authMiddleware)(), admin_controller_1.getLiveProducts);
 router.get("/users/overview", (0, auth_middleware_1.authMiddleware)(), admin_controller_1.getTotalPlatformUsersWithDuration);
 router.delete("/users/:userId", (0, auth_middleware_1.authMiddleware)(), admin_controller_1.deleteUser);
+router.get('/users/analytics', (0, auth_middleware_1.authMiddleware)(), admin_controller_1.getTotalPlatformUsersWithMonthlyChanges);
+router.get("/analytics/returning-users-weekly", (0, auth_middleware_1.authMiddleware)(), admin_controller_1.getReturningUserAnalytics);
+router.get("/analytics/user-sessions-weekly", (0, auth_middleware_1.authMiddleware)(), admin_controller_1.getPlatformUserSessionsAnalytics);
 exports.default = router;
