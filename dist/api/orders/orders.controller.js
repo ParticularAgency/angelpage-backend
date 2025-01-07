@@ -12,22 +12,22 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getCurrentUserPurchaseItems = exports.getCurretnUserSoldItems = exports.getTotalSalesStats = exports.getOrderById = exports.updateOrderStatusToDelivered = exports.updateOrderStatusToShipped = exports.getAllOrdersForSeller = exports.getBuyerPurchases = exports.getTotalSoldItems = exports.getPurchaseItems = exports.getSoldItems = exports.getOrdersByUser = exports.getServices = exports.getCarriers = exports.createLabelForOrder = exports.getRates = exports.createOrder = void 0;
+exports.getCurrentUserPurchaseItems = exports.getCurretnUserSoldItems = exports.getTotalSalesStats = exports.getOrderById = exports.updateOrderStatusToDelivered = exports.updateOrderStatusToShipped = exports.getAllOrdersForSeller = exports.getBuyerPurchases = exports.getTotalSoldItems = exports.getPurchaseItems = exports.getSoldItems = exports.getOrdersByUser = exports.getServices = exports.getCarriers = exports.createLabelForOrder = exports.getRates = exports.updateOrderStatus = exports.createOrder = void 0;
 const axios_1 = __importDefault(require("axios"));
 const buffer_1 = require("buffer");
 const Order_model_1 = __importDefault(require("../../models/Order.model"));
 const Cart_model_1 = __importDefault(require("../../models/Cart.model"));
-const User_model_1 = __importDefault(require("../../models/User.model"));
-const Charity_model_1 = __importDefault(require("../../models/Charity.model"));
 const date_fns_1 = require("date-fns");
+const stripe_1 = __importDefault(require("stripe"));
+const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });
 const createOrder = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a, _b;
     function generateNumericId() {
         return Math.floor(Math.random() * 1000000000); // Generates a 9-digit numeric ID
     }
-    const { buyerId, products, shippingAddress, paymentMethod, carrierCode, serviceCode, shipmentCost, } = req.body;
+    const { buyerId, products, shippingAddress, paymentMethod, carrierCode, serviceCode, shipmentCost, paymentConfirmedAt, adminAccountId = process.env.STRIPE_ADMIN_ACCOUNT_ID, } = req.body;
     try {
-        if (!buyerId || !products || products.length === 0 || !shippingAddress || !paymentMethod || !carrierCode || !serviceCode ||
+        if (!buyerId || !products || products.length === 0 || !shippingAddress || !adminAccountId || !paymentMethod || !carrierCode || !serviceCode ||
             shipmentCost === undefined) {
             return res.status(400).json({ error: "Invalid order details" });
         }
@@ -54,10 +54,18 @@ const createOrder = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             serviceCode,
             paymentStatus: "Pending",
             paymentConfirmed: false,
+            paymentConfirmedAt,
             shipStationOrderId: numericShipStationOrderId,
             status: "OrderPlaced",
         });
         yield newOrder.save();
+        // Create a PaymentIntent
+        const paymentIntent = yield stripe.paymentIntents.create({
+            amount: Math.round(grandTotal * 100), // Stripe expects amount in cents
+            currency: "gbp",
+            payment_method_types: ["card"],
+            metadata: { orderId: newOrder._id.toString() },
+        });
         yield Cart_model_1.default.findOneAndUpdate({ userId: buyerId }, { items: [] });
         // ShipStation integration
         const authToken = buffer_1.Buffer.from(`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`).toString("base64");
@@ -115,12 +123,13 @@ const createOrder = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             });
             const shipStationOrderId = orderResponse.data.orderId;
             newOrder.shipStationOrderId = shipStationOrderId;
-            newOrder.status = "OrderPlaced";
+            newOrder.status = "OrderConfirmed";
             yield newOrder.save();
             res.status(201).json({
                 success: true,
                 message: "Order created successfully and synced with ShipStation",
                 order: newOrder,
+                clientSecret: paymentIntent.client_secret,
             });
         }
         catch (orderError) {
@@ -132,6 +141,7 @@ const createOrder = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
                 success: true,
                 message: "Order created locally, but failed to sync with ShipStation",
                 order: newOrder,
+                clientSecret: paymentIntent.client_secret,
             });
         }
     }
@@ -141,6 +151,32 @@ const createOrder = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
     }
 });
 exports.createOrder = createOrder;
+// Endpoint to update order status and payment status
+const updateOrderStatus = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { orderId, status, orderStatus, paymentStatus, paymentConfirmed, paymentConfirmedAt } = req.body;
+    try {
+        const order = yield Order_model_1.default.findById(orderId);
+        if (!order) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+        // Update order status and payment status
+        order.status = status || order.status;
+        order.orderStatus = orderStatus || order.orderStatus;
+        order.paymentStatus = paymentStatus || order.paymentStatus;
+        order.paymentConfirmed = paymentConfirmed || order.paymentConfirmed;
+        // If payment is successful, store the payment confirmation time
+        if (paymentConfirmedAt) {
+            order.paymentConfirmedAt = paymentConfirmedAt; // Use the value from the request
+        }
+        yield order.save();
+        res.status(200).json({ success: true, message: 'Order status updated successfully', order });
+    }
+    catch (error) {
+        console.error("Error updating order status:", error);
+        res.status(500).json({ error: error.message || "Failed to update order status" });
+    }
+});
+exports.updateOrderStatus = updateOrderStatus;
 const getRates = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a, _b;
     const { carrierCode, serviceCode, fromPostalCode, fromCity, fromState, toPostalCode, toCountry, weight, dimensions, } = req.body;
@@ -346,14 +382,14 @@ const getSoldItems = (req, res) => __awaiter(void 0, void 0, void 0, function* (
         const orders = yield Order_model_1.default.find({
             "products.seller": sellerId,
         })
-            .populate("products.productId", "name price images brand")
-            .populate("products.charity", "charityName profileImage _id storefrontId")
+            .populate("products.productId", "name price images brand seller charity quantity")
+            .populate("products.charity", "charityName email profileImage _id storefrontId")
             .populate("buyerId", "firstName lastName email profileImage");
         // Transform data to include additional details
         const soldItems = orders.flatMap(order => order.products
             .filter(product => { var _a; return ((_a = product.seller) === null || _a === void 0 ? void 0 : _a.toString()) === sellerId; })
             .map(product => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u;
             return ({
                 orderId: order._id,
                 status: order.status,
@@ -371,14 +407,22 @@ const getSoldItems = (req, res) => __awaiter(void 0, void 0, void 0, function* (
                 productPrice: ((_m = product.productId) === null || _m === void 0 ? void 0 : _m.price) || 0,
                 productImages: ((_o = product.productId) === null || _o === void 0 ? void 0 : _o.images) || [],
                 quantity: product.quantity,
+                paymentMethod: order.paymentMethod || null,
+                paymentConfirmedAt: order.paymentConfirmedAt,
+                paymentStatus: order.paymentStatus || null,
+                paymentConfirmed: order.paymentConfirmed || null,
+                shipStationOrderId: order.shipStationOrderId || null,
+                shipmentCost: order.shipmentCost || null,
+                totalAmount: order.totalAmount || null,
                 totalProductCost: product.totalProductCost,
                 charityId: ((_p = product.charity) === null || _p === void 0 ? void 0 : _p._id) || null,
                 charityName: ((_q = product.charity) === null || _q === void 0 ? void 0 : _q.charityName) || "Unknown Charity",
-                charityProfileImage: ((_r = product.charity) === null || _r === void 0 ? void 0 : _r.profileImage) || null,
-                storefrontId: ((_s = product.charity) === null || _s === void 0 ? void 0 : _s.storefrontId) || null,
+                charityProfileImage: ((_r = product.charity) === null || _r === void 0 ? void 0 : _r.profileImage) || ((_t = (_s = product.productId) === null || _s === void 0 ? void 0 : _s.charity) === null || _t === void 0 ? void 0 : _t.profileImage) || null,
+                storefrontId: ((_u = product.charity) === null || _u === void 0 ? void 0 : _u.storefrontId) || null,
                 orderDate: order.createdAt,
             });
         }));
+        soldItems.sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
         // Function to calculate stats within a date range
         const calculateStats = (orders, rangeStart, rangeEnd) => {
             const filteredOrders = orders.filter(order => order.createdAt >= rangeStart && order.createdAt < rangeEnd);
@@ -454,14 +498,14 @@ const getPurchaseItems = (req, res) => __awaiter(void 0, void 0, void 0, functio
         // Find all orders for the given buyerId
         const orders = yield Order_model_1.default.find({ buyerId })
             .populate("products.productId", "name price images brand")
-            .populate("products.seller", "firstName lastName email profileImage")
-            .populate("products.charity", "charityName profileImage _id storefrontId");
+            .populate("products.seller", "_id firstName lastName email charityName profileImage")
+            .populate("products.charity", "charityName email profileImage _id storefrontId");
         if (!orders || orders.length === 0) {
             return res.status(404).json({ success: false, message: "No purchases found" });
         }
         // Transform data to include additional details
         const purchaseItems = orders.flatMap(order => order.products.map(product => {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7;
             return ({
                 orderId: order._id,
                 buyerId: order.buyerId,
@@ -473,29 +517,40 @@ const getPurchaseItems = (req, res) => __awaiter(void 0, void 0, void 0, functio
                 charityProfit: product.charityProfit || 0,
                 adminFee: product.adminFee || 0,
                 productImages: ((_f = product.productId) === null || _f === void 0 ? void 0 : _f.images) || [],
-                sellerId: ((_g = product.seller) === null || _g === void 0 ? void 0 : _g._id) || null,
-                sellerName: `${((_h = product.seller) === null || _h === void 0 ? void 0 : _h.firstName) || "Unknown"} ${((_j = product.seller) === null || _j === void 0 ? void 0 : _j.lastName) || ""}`.trim(),
-                sellerEmail: ((_k = product.seller) === null || _k === void 0 ? void 0 : _k.email) || null,
-                sellerProfileImage: ((_l = product.seller) === null || _l === void 0 ? void 0 : _l.profileImage) || null,
-                charityId: ((_m = product.charity) === null || _m === void 0 ? void 0 : _m._id) || null,
-                charityName: ((_o = product.charity) === null || _o === void 0 ? void 0 : _o.charityName) || "Unknown Charity",
-                charityProfileImage: ((_p = product.charity) === null || _p === void 0 ? void 0 : _p.profileImage) || null,
+                sellerId: ((_h = (_g = product.productId) === null || _g === void 0 ? void 0 : _g.seller) === null || _h === void 0 ? void 0 : _h._id) || ((_j = product.seller) === null || _j === void 0 ? void 0 : _j._id) || ((_k = product.charity) === null || _k === void 0 ? void 0 : _k._id) || null,
+                sellerName: (((_l = product.seller) === null || _l === void 0 ? void 0 : _l.firstName) && ((_m = product.seller) === null || _m === void 0 ? void 0 : _m.lastName)
+                    ? `${product.seller.firstName} ${product.seller.lastName}`.trim()
+                    : ((_o = product.charity) === null || _o === void 0 ? void 0 : _o.charityName) ||
+                        ((_q = (_p = product.productId) === null || _p === void 0 ? void 0 : _p.seller) === null || _q === void 0 ? void 0 : _q.charityName) ||
+                        ((_r = product.charity) === null || _r === void 0 ? void 0 : _r.charityName)) || "",
+                sellerEmail: ((_t = (_s = product.productId) === null || _s === void 0 ? void 0 : _s.seller) === null || _t === void 0 ? void 0 : _t.email) || ((_u = product.seller) === null || _u === void 0 ? void 0 : _u.email) || ((_v = product.charity) === null || _v === void 0 ? void 0 : _v.email) || null,
+                sellerProfileImage: ((_x = (_w = product.productId) === null || _w === void 0 ? void 0 : _w.seller) === null || _x === void 0 ? void 0 : _x.profileImage) || ((_y = product.seller) === null || _y === void 0 ? void 0 : _y.profileImage) || ((_z = product.charity) === null || _z === void 0 ? void 0 : _z.profileImage) || null,
+                charityId: ((_0 = product.charity) === null || _0 === void 0 ? void 0 : _0._id) || null,
+                charityName: ((_1 = product.charity) === null || _1 === void 0 ? void 0 : _1.charityName) || "Unknown Charity",
+                charityProfileImage: ((_2 = product.charity) === null || _2 === void 0 ? void 0 : _2.profileImage) || null,
                 quantity: product.quantity,
                 totalProductCost: product.totalProductCost || 0,
                 shippingAddress: {
-                    name: ((_q = order.shippingAddress) === null || _q === void 0 ? void 0 : _q.name) || "",
-                    address: ((_r = order.shippingAddress) === null || _r === void 0 ? void 0 : _r.address) || "",
-                    city: ((_s = order.shippingAddress) === null || _s === void 0 ? void 0 : _s.city) || "",
-                    country: ((_t = order.shippingAddress) === null || _t === void 0 ? void 0 : _t.country) || "",
-                    postcode: ((_u = order.shippingAddress) === null || _u === void 0 ? void 0 : _u.postcode) || "",
+                    name: ((_3 = order.shippingAddress) === null || _3 === void 0 ? void 0 : _3.name) || "",
+                    address: ((_4 = order.shippingAddress) === null || _4 === void 0 ? void 0 : _4.address) || "",
+                    city: ((_5 = order.shippingAddress) === null || _5 === void 0 ? void 0 : _5.city) || "",
+                    country: ((_6 = order.shippingAddress) === null || _6 === void 0 ? void 0 : _6.country) || "",
+                    postcode: ((_7 = order.shippingAddress) === null || _7 === void 0 ? void 0 : _7.postcode) || "",
                 },
                 paymentMethod: order.paymentMethod || null,
+                paymentConfirmedAt: order.paymentConfirmedAt || null,
+                paymentStatus: order.paymentStatus || null,
+                paymentConfirmed: order.paymentConfirmed || null,
+                shipStationOrderId: order.shipStationOrderId || null,
+                shipmentCost: order.shipmentCost || null,
+                totalAmount: order.totalAmount || null,
                 orderStatus: order.orderStatus || "Unknown",
                 status: order.status || "Unknown",
                 createdAt: order.createdAt,
                 updatedAt: order.updatedAt,
             });
         }));
+        purchaseItems.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
         // Function to calculate stats within a date range
         const calculateStats = (orders, rangeStart, rangeEnd) => {
             const filteredOrders = orders.filter(order => order.createdAt >= rangeStart && order.createdAt < rangeEnd);

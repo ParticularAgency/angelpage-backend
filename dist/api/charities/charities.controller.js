@@ -12,11 +12,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getCharityDetails = exports.getCharityList = exports.getStorefrontData = exports.deletePayment = exports.updatePayment = exports.addPayment = exports.deleteAddress = exports.updateAddress = exports.addAddress = exports.getCharityAdminInfo = exports.updateCharityAdminInfo = exports.getCharityProfile = exports.updateProfile = void 0;
+exports.stripeOAuthCallback = exports.generateStripeOAuthUrl = exports.getCharityDetails = exports.getCharityList = exports.getStorefrontData = exports.deletePayment = exports.updatePayment = exports.addPayment = exports.deleteAddress = exports.updateAddress = exports.addAddress = exports.getCharityAdminInfo = exports.updateCharityAdminInfo = exports.getCharityProfile = exports.updateProfile = void 0;
 // import { Request, Response } from "express";
 const cloudinary_1 = __importDefault(require("../../config/cloudinary"));
 const Charity_model_1 = __importDefault(require("../../models/Charity.model"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const stripe_1 = __importDefault(require("stripe"));
+const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });
 // Update profile function
 const updateProfile = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -341,3 +343,52 @@ const getCharityDetails = (req, res) => __awaiter(void 0, void 0, void 0, functi
     }
 });
 exports.getCharityDetails = getCharityDetails;
+// Endpoint to generate Stripe Connect OAuth URL
+const generateStripeOAuthUrl = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const redirectUri = `${process.env.FRONTEND_BASE_URL}/`; // URL to redirect after Stripe authentication
+    try {
+        // Generate the Stripe Connect OAuth URL
+        const oauthUrl = stripe.oauth.authorizeUrl({
+            scope: 'read_write',
+            redirect_uri: redirectUri,
+            client_id: process.env.STRIPE_CLIENT_ID,
+        });
+        // Send the OAuth URL to the frontend
+        res.json({ url: oauthUrl });
+    }
+    catch (error) {
+        console.error('Error generating Stripe OAuth URL:', error);
+        res.status(500).json({ error: 'Failed to generate Stripe OAuth URL' });
+    }
+});
+exports.generateStripeOAuthUrl = generateStripeOAuthUrl;
+// Handle the Stripe OAuth callback
+const stripeOAuthCallback = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const { code } = req.query; // The 'code' parameter that Stripe sends in the query string
+    if (!code) {
+        return res.status(400).json({ message: 'Authorization code not found.' });
+    }
+    try {
+        // Exchange the authorization code for an access token
+        const response = yield stripe.oauth.token({
+            grant_type: 'authorization_code',
+            code: code,
+        });
+        const stripeAccountId = response.stripe_user_id; // Charity's connected Stripe account ID
+        // Save the Stripe account ID in the charity's record
+        const charity = yield Charity_model_1.default.findOne({ email: response.email });
+        if (charity) {
+            charity.stripeAccountId = stripeAccountId; // Store the Stripe account ID
+            yield charity.save();
+            return res.status(200).json({ message: 'Stripe account connected successfully' });
+        }
+        else {
+            return res.status(404).json({ message: 'Charity not found' });
+        }
+    }
+    catch (error) {
+        console.error('Stripe OAuth error:', error);
+        return res.status(500).json({ message: 'Error connecting Stripe account' });
+    }
+});
+exports.stripeOAuthCallback = stripeOAuthCallback;

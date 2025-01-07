@@ -96,6 +96,7 @@ export const createProduct = async (req, res) => {
 			selectedCharityName,
 			selectedCharityId,
 			seller: userId,
+			// sellerType: role,
 			images,
 			status: status || "DRAFT",
 			isArchived: false,
@@ -347,7 +348,7 @@ export const getProductDetails = async (req, res) => {
 	try {
 		// Fetch product details by ID, including populated fields for seller and charity
 		const product = await Product.findById(productId)
-			.populate("seller", "firstName lastName profileImage  addresses")
+			.populate("seller", "_id firstName lastName profileImage  addresses")
 			.populate("charity", "charityName charityID storefrontId profileImage  addresses");
 
 		if (!product) {
@@ -355,6 +356,14 @@ export const getProductDetails = async (req, res) => {
 		}
 
 
+		// Determine the seller type
+		let sellerType = null;
+
+		if (product.seller) {
+			sellerType = "USER";
+		} else if (product.charity) {
+			sellerType = "CHARITY";
+		}
 
 		// Return product details with charity and seller info
 		return res.status(200).json({
@@ -381,13 +390,16 @@ export const getProductDetails = async (req, res) => {
 				},
 				createdAt: product.createdAt,
 				charity: {
+					id: product.charity?._id,
 					charityName: product.charity?.charityName,
 					charityID: product.charity?.charityID,
 					storefrontId: product.charity?.storefrontId,
 					profileImage: product.charity?.profileImage,
 					address: product.charity?.addresses?.[0],
 				},
+				sellerType,
 				seller: {
+					id: product.seller?._id,
 					firstName: product.seller?.firstName,
 					lastName: product.seller?.lastName,
 					profileImage: product.seller?.profileImage,

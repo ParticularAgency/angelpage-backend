@@ -16,6 +16,7 @@ const orders_routes_1 = __importDefault(require("../api/orders/orders.routes"));
 const email_routes_1 = __importDefault(require("../api/email/email.routes")); // Adjust the path as necessary, based on your folder structure
 const search_routes_1 = __importDefault(require("../api/Search/search.routes")); // Adjust the path as necessary, based on your folder structure
 const notifications_routes_1 = __importDefault(require("../api/notifications/notifications.routes")); // Adjust the path as necessary, based on your folder structure
+const messages_routes_1 = __importDefault(require("../api/messages/messages.routes")); // Adjust the path as necessary, based on your folder structure
 const router = (0, express_1.Router)();
 // Simple health check route
 router.get("/health", (req, res) => {
@@ -34,4 +35,5 @@ router.use("/order", orders_routes_1.default); // All routes under "/auth" will 
 router.use("/email", email_routes_1.default); // All routes under "/auth" will be handled by authRoutes
 router.use("/search", search_routes_1.default); // All routes under "/auth" will be handled by authRoutes
 router.use("/notification", notifications_routes_1.default); // All routes under "/auth" will be handled by authRoutes
+router.use("/message", messages_routes_1.default); // All routes under "/auth" will be handled by authRoutes
 exports.default = router;

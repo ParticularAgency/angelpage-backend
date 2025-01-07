@@ -19,7 +19,7 @@ router.get("/seller/:sellerId/orders", (0, auth_middleware_1.authMiddleware)(), 
 router.get("/user/:userId", orders_controller_1.getOrdersByUser);
 // Get sold items for a specific seller
 router.get("/seller/:sellerId/sold", (0, auth_middleware_1.authMiddleware)(), orders_controller_1.getSoldItems);
-router.get("/buyer/:buyerId/orders", (0, auth_middleware_1.authMiddleware)(), orders_controller_1.getPurchaseItems);
+router.get("/buyer/:buyerId/orders", orders_controller_1.getPurchaseItems);
 router.get("/:orderId", (0, auth_middleware_1.authMiddleware)(), orders_controller_1.getOrderById);
 router.patch("/:orderId/shipped", (0, auth_middleware_1.authMiddleware)(), orders_controller_1.updateOrderStatusToShipped);
 router.patch("/:orderId/delivered", (0, auth_middleware_1.authMiddleware)(), orders_controller_1.updateOrderStatusToDelivered);
@@ -33,4 +33,5 @@ router.get("/buyer/:buyerId/purchases", orders_controller_1.getBuyerPurchases);
 // router.post("/pickups", schedulePickup);
 router.get("/users/:sellerId/dashboard-sales-analytics", (0, auth_middleware_1.authMiddleware)(), orders_controller_1.getCurretnUserSoldItems);
 router.get("/users/:buyerId/dashboard-purchase-analytics", (0, auth_middleware_1.authMiddleware)(), orders_controller_1.getCurrentUserPurchaseItems);
+router.post("/update-order-status", orders_controller_1.updateOrderStatus);
 exports.default = router;

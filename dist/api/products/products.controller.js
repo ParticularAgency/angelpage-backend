@@ -91,6 +91,7 @@ const createProduct = (req, res) => __awaiter(void 0, void 0, void 0, function* 
             selectedCharityName,
             selectedCharityId,
             seller: userId,
+            // sellerType: role,
             images,
             status: status || "DRAFT",
             isArchived: false,
@@ -308,15 +309,23 @@ const getRelatedProducts = (req, res) => __awaiter(void 0, void 0, void 0, funct
 exports.getRelatedProducts = getRelatedProducts;
 // Get Product Details (Public Access)
 const getProductDetails = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
     const { productId } = req.params;
     try {
         // Fetch product details by ID, including populated fields for seller and charity
         const product = yield Product_model_1.default.findById(productId)
-            .populate("seller", "firstName lastName profileImage  addresses")
+            .populate("seller", "_id firstName lastName profileImage  addresses")
             .populate("charity", "charityName charityID storefrontId profileImage  addresses");
         if (!product) {
             return res.status(404).json({ message: "Product not found." });
+        }
+        // Determine the seller type
+        let sellerType = null;
+        if (product.seller) {
+            sellerType = "USER";
+        }
+        else if (product.charity) {
+            sellerType = "CHARITY";
         }
         // Return product details with charity and seller info
         return res.status(200).json({
@@ -343,17 +352,20 @@ const getProductDetails = (req, res) => __awaiter(void 0, void 0, void 0, functi
                 },
                 createdAt: product.createdAt,
                 charity: {
-                    charityName: (_d = product.charity) === null || _d === void 0 ? void 0 : _d.charityName,
-                    charityID: (_e = product.charity) === null || _e === void 0 ? void 0 : _e.charityID,
-                    storefrontId: (_f = product.charity) === null || _f === void 0 ? void 0 : _f.storefrontId,
-                    profileImage: (_g = product.charity) === null || _g === void 0 ? void 0 : _g.profileImage,
-                    address: (_j = (_h = product.charity) === null || _h === void 0 ? void 0 : _h.addresses) === null || _j === void 0 ? void 0 : _j[0],
+                    id: (_d = product.charity) === null || _d === void 0 ? void 0 : _d._id,
+                    charityName: (_e = product.charity) === null || _e === void 0 ? void 0 : _e.charityName,
+                    charityID: (_f = product.charity) === null || _f === void 0 ? void 0 : _f.charityID,
+                    storefrontId: (_g = product.charity) === null || _g === void 0 ? void 0 : _g.storefrontId,
+                    profileImage: (_h = product.charity) === null || _h === void 0 ? void 0 : _h.profileImage,
+                    address: (_k = (_j = product.charity) === null || _j === void 0 ? void 0 : _j.addresses) === null || _k === void 0 ? void 0 : _k[0],
                 },
+                sellerType,
                 seller: {
-                    firstName: (_k = product.seller) === null || _k === void 0 ? void 0 : _k.firstName,
-                    lastName: (_l = product.seller) === null || _l === void 0 ? void 0 : _l.lastName,
-                    profileImage: (_m = product.seller) === null || _m === void 0 ? void 0 : _m.profileImage,
-                    address: (_p = (_o = product.seller) === null || _o === void 0 ? void 0 : _o.addresses) === null || _p === void 0 ? void 0 : _p[0],
+                    id: (_l = product.seller) === null || _l === void 0 ? void 0 : _l._id,
+                    firstName: (_m = product.seller) === null || _m === void 0 ? void 0 : _m.firstName,
+                    lastName: (_o = product.seller) === null || _o === void 0 ? void 0 : _o.lastName,
+                    profileImage: (_p = product.seller) === null || _p === void 0 ? void 0 : _p.profileImage,
+                    address: (_r = (_q = product.seller) === null || _q === void 0 ? void 0 : _q.addresses) === null || _r === void 0 ? void 0 : _r[0],
                 },
             },
         });

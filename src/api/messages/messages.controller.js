@@ -1,32 +1,20 @@
-"use strict";
-var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
-    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
-    return new (P || (P = Promise))(function (resolve, reject) {
-        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
-        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
-        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
-        step((generator = generator.apply(thisArg, _arguments || [])).next());
-    });
-};
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.getUserConversations = exports.fetchRecipientMessages = exports.fetchConversation = exports.sendMessage = exports.startConversation = void 0;
-const Conversation_model_1 = __importDefault(require("../../models/Conversation.model"));
-const Message_model_1 = __importDefault(require("../../models/Message.model"));
-const User_model_1 = __importDefault(require("../../models/User.model"));
-const Charity_model_1 = __importDefault(require("../../models/Charity.model"));
-const startConversation = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+import Conversation from "../../models/Conversation.model";
+import Message from "../../models/Message.model";
+import User from "../../models/User.model";
+import Charity from "../../models/Charity.model";
+
+export const startConversation = async (req, res) => {
     const { buyerId, buyerType, sellerId, sellerType } = req.body;
+
     if (!buyerId || !buyerType || !sellerId || !sellerType) {
         return res.status(400).json({
             message: "Buyer and Seller IDs and their types are required.",
         });
     }
+
     try {
         // Check if a conversation already exists between the participants
-        let conversation = yield Conversation_model_1.default.findOne({
+        let conversation = await Conversation.findOne({
             participants: {
                 $all: [
                     { participantId: buyerId, participantType: buyerType },
@@ -34,47 +22,61 @@ const startConversation = (req, res) => __awaiter(void 0, void 0, void 0, functi
                 ],
             },
         });
+
         // If no conversation exists, create a new one
         if (!conversation) {
-            conversation = new Conversation_model_1.default({
+            conversation = new Conversation({
                 participants: [
                     { participantId: buyerId, participantType: buyerType },
                     { participantId: sellerId, participantType: sellerType },
                 ],
             });
-            yield conversation.save();
+            await conversation.save();
         }
+
         res.status(200).json({ success: true, conversation });
-    }
-    catch (error) {
+    } catch (error) {
         console.error("Error starting conversation:", error);
         res.status(500).json({ message: "Internal server error", error });
     }
-});
-exports.startConversation = startConversation;
-const sendMessage = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { conversationId, senderId, senderType, recipientId, recipientType, content, } = req.body;
-    if (!conversationId ||
+};
+
+export const sendMessage = async (req, res) => {
+    const {
+        conversationId,
+        senderId,
+        senderType,
+        recipientId,
+        recipientType,
+        content,
+    } = req.body;
+
+    if (
+        !conversationId ||
         !senderId ||
         !senderType ||
         !recipientId ||
         !recipientType ||
-        !content) {
+        !content
+    ) {
         return res.status(400).json({ message: "All fields are required." });
     }
+
     try {
         // Validate senderType and recipientType against allowed enum values
         const validTypes = ["User", "Charity"];
         if (!validTypes.includes(senderType) || !validTypes.includes(recipientType)) {
             return res.status(400).json({ message: "Invalid senderType or recipientType." });
         }
+
         // Ensure the conversation exists
-        const conversation = yield Conversation_model_1.default.findById(conversationId);
+        const conversation = await Conversation.findById(conversationId);
         if (!conversation) {
             return res.status(404).json({ message: "Conversation not found." });
         }
+
         // Create and save the new message
-        const newMessage = new Message_model_1.default({
+        const newMessage = new Message({
             conversationId,
             sender: senderId,
             senderType,
@@ -82,91 +84,115 @@ const sendMessage = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             recipientType,
             content,
         });
-        const savedMessage = yield newMessage.save();
+
+        const savedMessage = await newMessage.save();
+
         res.status(201).json({
             success: true,
             message: "Message sent successfully.",
             data: savedMessage,
         });
-    }
-    catch (error) {
+    } catch (error) {
         console.error("Error sending message:", error);
         res.status(500).json({ message: "Internal server error.", error });
     }
-});
-exports.sendMessage = sendMessage;
-const fetchConversation = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+};
+
+export const fetchConversation = async (req, res) => {
     const { conversationId } = req.params;
+
     try {
         // Fetch the conversation details
-        const conversation = yield Conversation_model_1.default.findById(conversationId);
+        const conversation = await Conversation.findById(conversationId);
         if (!conversation) {
             return res.status(404).json({ message: "Conversation not found." });
         }
+
         // Fetch messages for the conversation
-        const messages = yield Message_model_1.default.find({ conversationId })
+        const messages = await Message.find({ conversationId })
             .populate("sender", "firstName lastName profileImage") // Populate sender details
             .sort({ createdAt: 1 }); // Sort by creation time (oldest first)
+
         // Enrich each message with recipient details
-        const enrichedMessages = yield Promise.all(messages.map((message) => __awaiter(void 0, void 0, void 0, function* () {
-            if (!message.recipient) {
-                // Find the recipient in the participants
-                const recipientInfo = conversation.participants.find((participant) => participant.participantId.toString() !== message.sender._id.toString());
-                if (recipientInfo) {
-                    message.recipient = recipientInfo.participantId;
-                    message.recipientType = recipientInfo.participantType;
-                    // Fetch recipient details based on type
-                    if (recipientInfo.participantType === "USER") {
-                        const recipientUser = yield User_model_1.default.findById(recipientInfo.participantId).select("firstName lastName profileImage");
-                        message.recipientDetails = recipientUser;
+        const enrichedMessages = await Promise.all(
+            messages.map(async (message) => {
+                if (!message.recipient) {
+                    // Find the recipient in the participants
+                    const recipientInfo = conversation.participants.find(
+                        (participant) =>
+                            participant.participantId.toString() !== message.sender._id.toString()
+                    );
+
+                    if (recipientInfo) {
+                        message.recipient = recipientInfo.participantId;
+                        message.recipientType = recipientInfo.participantType;
+
+                        // Fetch recipient details based on type
+                        if (recipientInfo.participantType === "USER") {
+                            const recipientUser = await User.findById(recipientInfo.participantId).select(
+                                "firstName lastName profileImage"
+                            );
+                            message.recipientDetails = recipientUser;
+                        } else if (recipientInfo.participantType === "CHARITY") {
+                            const recipientCharity = await Charity.findById(
+                                recipientInfo.participantId
+                            ).select("charityName profileImage");
+                            message.recipientDetails = recipientCharity;
+                        }
                     }
-                    else if (recipientInfo.participantType === "CHARITY") {
-                        const recipientCharity = yield Charity_model_1.default.findById(recipientInfo.participantId).select("charityName profileImage");
-                        message.recipientDetails = recipientCharity;
-                    }
+                } else {
+                    // Populate recipient if already present
+                    const recipient =
+                        message.recipientType === "User"
+                            ? await User.findById(message.recipient).select(
+                                "firstName lastName profileImage"
+                            )
+                            : await Charity.findById(message.recipient).select(
+                                "charityName profileImage"
+                            );
+
+                    message.recipientDetails = recipient;
                 }
-            }
-            else {
-                // Populate recipient if already present
-                const recipient = message.recipientType === "User"
-                    ? yield User_model_1.default.findById(message.recipient).select("firstName lastName profileImage")
-                    : yield Charity_model_1.default.findById(message.recipient).select("charityName profileImage");
-                message.recipientDetails = recipient;
-            }
-            return message;
-        })));
+
+                return message;
+            })
+        );
+
         res.status(200).json({
             success: true,
             conversation,
             messages: enrichedMessages,
         });
-    }
-    catch (error) {
+    } catch (error) {
         console.error("Error fetching conversation:", error);
         res.status(500).json({ message: "Internal server error.", error });
     }
-});
-exports.fetchConversation = fetchConversation;
-const fetchRecipientMessages = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+};
+
+export const fetchRecipientMessages = async (req, res) => {
     const { userId } = req.params;
+
     if (!userId) {
         console.error("Recipient ID is missing.");
         return res.status(400).json({ success: false, message: "Recipient ID is required." });
     }
+
     try {
         console.log("Fetching messages for recipient ID:", userId);
+
         // Fetch messages where the user is the recipient
-        const messages = yield Message_model_1.default.find({ recipient: userId })
+        const messages = await Message.find({ recipient: userId })
             .populate("sender", "firstName lastName profileImage")
             .populate("recipient", "firstName lastName profileImage")
             .sort({ createdAt: -1 });
+
         if (!messages || messages.length === 0) {
             console.log("No messages found for recipient ID:", userId);
             return res.status(200).json({ success: true, messages: [] });
         }
+
         res.status(200).json({ success: true, messages });
-    }
-    catch (error) {
+    } catch (error) {
         console.error("Error fetching recipient messages:", error);
         res.status(500).json({
             success: false,
@@ -174,28 +200,32 @@ const fetchRecipientMessages = (req, res) => __awaiter(void 0, void 0, void 0, f
             error: error.message,
         });
     }
-});
-exports.fetchRecipientMessages = fetchRecipientMessages;
-const getUserConversations = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+};
+
+export const getUserConversations = async (req, res) => {
     const { userId } = req.params;
+
     if (!userId) {
         console.error("Recipient ID is missing.");
         return res.status(400).json({ success: false, message: "Recipient ID is required." });
     }
+
     try {
         console.log("Fetching messages for recipient ID:", userId);
+
         // Fetch messages where the user is the recipient
-        const messages = yield Message_model_1.default.find({ recipient: userId })
+        const messages = await Message.find({ recipient: userId })
             .populate("sender", "firstName lastName profileImage")
             .populate("recipient", "firstName lastName profileImage")
             .sort({ createdAt: -1 });
+
         if (!messages || messages.length === 0) {
             console.log("No messages found for recipient ID:", userId);
             return res.status(200).json({ success: true, messages: [] });
         }
+
         res.status(200).json({ success: true, messages });
-    }
-    catch (error) {
+    } catch (error) {
         console.error("Error fetching recipient messages:", error);
         res.status(500).json({
             success: false,
@@ -203,28 +233,32 @@ const getUserConversations = (req, res) => __awaiter(void 0, void 0, void 0, fun
             error: error.message,
         });
     }
-});
-exports.getUserConversations = getUserConversations;
+};
 // Fetch user conversations
 // export const getUserConversations = async (req, res) => {
 //     const { userId } = req.params;
+
 //     if (!userId) {
 //         return res.status(400).json({ success: false, message: 'User ID is required.' });
 //     }
+
 //     try {
 //         // Fetch all conversations where the user is a participant
 //         const conversations = await Conversation.find({
 //             participants: { $elemMatch: { participantId: userId } },
 //         }).populate("participants.participantId", "firstName lastName charityName profileImage");
+
 //         if (!conversations || conversations.length === 0) {
 //             return res.status(404).json({ success: false, message: "No conversations found." });
 //         }
+
 //         // Enrich conversations with the last message
 //         const enrichedConversations = await Promise.all(
 //             conversations.map(async (conv) => {
 //                 const lastMessage = await Message.findOne({ conversationId: conv._id })
 //                     .sort({ createdAt: -1 })
 //                     .select("content createdAt sender senderType");
+
 //                 return {
 //                     conversationId: conv._id,
 //                     participants: conv.participants,
@@ -233,6 +267,7 @@ exports.getUserConversations = getUserConversations;
 //                 };
 //             })
 //         );
+
 //         res.status(200).json({ success: true, conversations: enrichedConversations });
 //     } catch (error) {
 //         console.error("Error fetching user conversations:", error);

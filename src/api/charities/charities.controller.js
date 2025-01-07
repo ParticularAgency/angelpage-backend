@@ -2,6 +2,8 @@
 import cloudinary from "../../config/cloudinary";
 import Charity from "../../models/Charity.model";
 import bcrypt from "bcryptjs";
+import Stripe from 'stripe';
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });
 
 // Update profile function
 export const updateProfile = async (req, res) => {
@@ -362,5 +364,58 @@ export const getCharityDetails = async (req, res) => {
 	} catch (error) {
 		console.error('Error fetching charity details:', error);
 		res.status(500).json({ message: 'Internal server error' });
+	}
+};
+
+// Endpoint to generate Stripe Connect OAuth URL
+export const generateStripeOAuthUrl = async (_req, res) => {
+	const redirectUri = `${process.env.FRONTEND_BASE_URL}/`;  // URL to redirect after Stripe authentication
+
+	try {
+		// Generate the Stripe Connect OAuth URL
+		const oauthUrl = stripe.oauth.authorizeUrl({
+			scope: 'read_write',
+			redirect_uri: redirectUri,
+			client_id: process.env.STRIPE_CLIENT_ID,
+		});
+
+		// Send the OAuth URL to the frontend
+		res.json({ url: oauthUrl });
+	} catch (error) {
+		console.error('Error generating Stripe OAuth URL:', error);
+		res.status(500).json({ error: 'Failed to generate Stripe OAuth URL' });
+	}
+};
+
+// Handle the Stripe OAuth callback
+export const stripeOAuthCallback = async (req, res) => {
+	const { code } = req.query;  // The 'code' parameter that Stripe sends in the query string
+
+	if (!code) {
+		return res.status(400).json({ message: 'Authorization code not found.' });
+	}
+
+	try {
+		// Exchange the authorization code for an access token
+		const response = await stripe.oauth.token({
+			grant_type: 'authorization_code',
+			code: code,
+		});
+
+		const stripeAccountId = response.stripe_user_id;  // Charity's connected Stripe account ID
+
+		// Save the Stripe account ID in the charity's record
+		const charity = await Charity.findOne({ email: response.email });
+		if (charity) {
+			charity.stripeAccountId = stripeAccountId;  // Store the Stripe account ID
+			await charity.save();
+
+			return res.status(200).json({ message: 'Stripe account connected successfully' });
+		} else {
+			return res.status(404).json({ message: 'Charity not found' });
+		}
+	} catch (error) {
+		console.error('Stripe OAuth error:', error);
+		return res.status(500).json({ message: 'Error connecting Stripe account' });
 	}
 };

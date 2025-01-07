@@ -54,6 +54,7 @@ export interface ICharity extends Document {
 	lastWelcomeBackEmailSent?: Date;
 	verificationCode?: string;
 	verificationExpiry?: Date;
+	stripeAccountId?: string;
 }
 
 // Address schema for embedding
@@ -135,6 +136,7 @@ const charitySchema = new Schema<ICharity>(
 		websiteLink: { type: String, required: false },
 		description: { type: String, required: false },
 		storefrontId: { type: String, unique: true, required: false },
+		stripeAccountId: { type: String, required: false },
 		listedProducts: [{ type: Schema.Types.ObjectId, ref: "Product" }],
 		favoriteProducts: [
 			{ type: mongoose.Schema.Types.ObjectId, ref: "Product" },

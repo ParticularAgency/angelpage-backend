@@ -14,7 +14,7 @@ import {
 	getTotalSoldItems,
 	getBuyerPurchases,
 	// getCarrierServices,
-	// getCarrierPackages,
+	updateOrderStatus,
 	getCurretnUserSoldItems,
 	getCurrentUserPurchaseItems,
 	getRates,
@@ -24,6 +24,7 @@ import {
 	updateOrderStatusToDelivered,
 	getAllOrdersForSeller,
 	updateOrderStatusToShipped,
+ 
 } from "./orders.controller";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 
@@ -52,7 +53,7 @@ router.get("/user/:userId", getOrdersByUser);
 
 // Get sold items for a specific seller
 router.get("/seller/:sellerId/sold", authMiddleware(), getSoldItems);
-router.get("/buyer/:buyerId/orders", authMiddleware(), getPurchaseItems);
+router.get("/buyer/:buyerId/orders",  getPurchaseItems);
 router.get("/:orderId", authMiddleware(), getOrderById);
 
 
@@ -92,6 +93,7 @@ router.get(
 	authMiddleware(),
 	getCurrentUserPurchaseItems,
 );
+router.post("/update-order-status", updateOrderStatus);
 
 
 export default router;

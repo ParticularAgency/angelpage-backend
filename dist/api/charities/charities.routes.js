@@ -28,6 +28,6 @@ router.put("/profile/payments/:paymentId", (0, auth_middleware_1.authMiddleware)
 router.delete("/profile/payments/:paymentId", (0, auth_middleware_1.authMiddleware)(), charities_controller_1.deletePayment);
 router.get("/charities", charities_controller_1.getCharityList);
 router.get("/charities/:charityid", charities_controller_1.getCharityDetails);
-// storefront data routes
-// router.get("/storefront/:storefrontid", getStorefrontData);
+router.post("/stripe/connect-url", charities_controller_1.generateStripeOAuthUrl);
+router.get('/stripe/connect/callback', charities_controller_1.stripeOAuthCallback);
 exports.default = router;

@@ -114,6 +114,7 @@ const charitySchema = new mongoose_1.Schema({
     websiteLink: { type: String, required: false },
     description: { type: String, required: false },
     storefrontId: { type: String, unique: true, required: false },
+    stripeAccountId: { type: String, required: false },
     listedProducts: [{ type: mongoose_1.Schema.Types.ObjectId, ref: "Product" }],
     favoriteProducts: [
         { type: mongoose_1.default.Schema.Types.ObjectId, ref: "Product" },

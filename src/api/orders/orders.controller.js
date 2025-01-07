@@ -2,9 +2,13 @@ import axios from "axios";
 import { Buffer } from "buffer";
 import Order from "../../models/Order.model";
 import Cart from "../../models/Cart.model";
-import User from "../../models/User.model";
-import Charity from "../../models/Charity.model";
 import { startOfWeek, subWeeks, startOfMonth, subMonths, startOfYear, subYears } from "date-fns";
+
+
+import Stripe from 'stripe';
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });
+
 
 export const createOrder = async (req, res) => {
 	function generateNumericId() {
@@ -19,10 +23,12 @@ export const createOrder = async (req, res) => {
 		carrierCode,
 		serviceCode,
 		shipmentCost, 
+		paymentConfirmedAt,
+		adminAccountId = process.env.STRIPE_ADMIN_ACCOUNT_ID,
 	} = req.body;
 
 	try {
-		if (!buyerId || !products || products.length === 0 || !shippingAddress || !paymentMethod || !carrierCode || !serviceCode ||
+		if (!buyerId || !products || products.length === 0 || !shippingAddress || !adminAccountId || !paymentMethod || !carrierCode || !serviceCode ||
 			shipmentCost === undefined) {
 			return res.status(400).json({ error: "Invalid order details" });
 		}
@@ -58,11 +64,23 @@ export const createOrder = async (req, res) => {
 			serviceCode,
 			paymentStatus: "Pending",
 			paymentConfirmed: false,
+            paymentConfirmedAt,
 			shipStationOrderId: numericShipStationOrderId,
 			status: "OrderPlaced",
 		});
 
 		await newOrder.save();
+
+				// Create a PaymentIntent
+				const paymentIntent = await stripe.paymentIntents.create({
+					amount: Math.round(grandTotal * 100), // Stripe expects amount in cents
+					currency: "gbp",
+					payment_method_types: ["card"],
+					metadata: { orderId: newOrder._id.toString() },
+					
+				});
+				
+	
 		await Cart.findOneAndUpdate({ userId: buyerId }, { items: [] });
 
 		// ShipStation integration
@@ -132,7 +150,7 @@ export const createOrder = async (req, res) => {
 
 			const shipStationOrderId = orderResponse.data.orderId;
 			newOrder.shipStationOrderId = shipStationOrderId;
-			newOrder.status = "OrderPlaced";
+			newOrder.status = "OrderConfirmed";
 
 			await newOrder.save();
 
@@ -140,6 +158,8 @@ export const createOrder = async (req, res) => {
 				success: true,
 				message: "Order created successfully and synced with ShipStation",
 				order: newOrder,
+				clientSecret: paymentIntent.client_secret,
+
 			});
 		} catch (orderError) {
 			console.error("Error creating order in ShipStation:", orderError.response?.data || orderError.message);
@@ -151,6 +171,7 @@ export const createOrder = async (req, res) => {
 				success: true,
 				message: "Order created locally, but failed to sync with ShipStation",
 				order: newOrder,
+				clientSecret: paymentIntent.client_secret,
 			});
 		}
 	} catch (error) {
@@ -158,6 +179,40 @@ export const createOrder = async (req, res) => {
 		res.status(500).json({ error: error.message || "Failed to create order" });
 	}
 };
+
+// Endpoint to update order status and payment status
+export const updateOrderStatus = async (req, res) => {
+	const { orderId, status, orderStatus, paymentStatus, paymentConfirmed, paymentConfirmedAt } = req.body;
+
+	try {
+		const order = await Order.findById(orderId);
+
+		if (!order) {
+			return res.status(404).json({ error: 'Order not found' });
+		}
+
+		// Update order status and payment status
+		order.status = status || order.status;
+		order.orderStatus = orderStatus || order.orderStatus;
+		order.paymentStatus = paymentStatus || order.paymentStatus;
+		order.paymentConfirmed = paymentConfirmed || order.paymentConfirmed;
+
+		// If payment is successful, store the payment confirmation time
+		if (paymentConfirmedAt) {
+			order.paymentConfirmedAt = paymentConfirmedAt; // Use the value from the request
+		}
+
+		await order.save();
+
+		res.status(200).json({ success: true, message: 'Order status updated successfully', order });
+	} catch (error) {
+		console.error("Error updating order status:", error);
+		res.status(500).json({ error: error.message || "Failed to update order status" });
+	}
+};
+
+
+
 export const getRates = async (req, res) => {
 	const {
 		carrierCode,
@@ -416,8 +471,8 @@ export const getSoldItems = async (req, res) => {
 		const orders = await Order.find({
 			"products.seller": sellerId,
 		})
-			.populate("products.productId", "name price images brand")
-			.populate("products.charity", "charityName profileImage _id storefrontId")
+			.populate("products.productId", "name price images brand seller charity quantity")
+			.populate("products.charity", "charityName email profileImage _id storefrontId")
 			.populate("buyerId", "firstName lastName email profileImage");
 
 		// Transform data to include additional details
@@ -442,15 +497,22 @@ export const getSoldItems = async (req, res) => {
 					productPrice: product.productId?.price || 0,
 					productImages: product.productId?.images || [],
 					quantity: product.quantity,
+					paymentMethod: order.paymentMethod || null,
+					paymentConfirmedAt: order.paymentConfirmedAt,
+					paymentStatus: order.paymentStatus || null,
+					paymentConfirmed: order.paymentConfirmed || null,
+					shipStationOrderId: order.shipStationOrderId || null,
+					shipmentCost: order.shipmentCost || null,
+					totalAmount: order.totalAmount || null,
 					totalProductCost: product.totalProductCost,
 					charityId: product.charity?._id || null,
 					charityName: product.charity?.charityName || "Unknown Charity",
-					charityProfileImage: product.charity?.profileImage || null,
+					charityProfileImage: product.charity?.profileImage || product.productId?.charity?.profileImage || null,
 					storefrontId: product.charity?.storefrontId || null,
 					orderDate: order.createdAt,
 				})),
 		);
-
+		soldItems.sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
 		// Function to calculate stats within a date range
 		const calculateStats = (orders, rangeStart, rangeEnd) => {
 			const filteredOrders = orders.filter(
@@ -535,8 +597,8 @@ export const getPurchaseItems = async (req, res) => {
 		// Find all orders for the given buyerId
 		const orders = await Order.find({ buyerId })
 			.populate("products.productId", "name price images brand")
-			.populate("products.seller", "firstName lastName email profileImage")
-			.populate("products.charity", "charityName profileImage _id storefrontId");
+			.populate("products.seller", "_id firstName lastName email charityName profileImage")
+			.populate("products.charity", "charityName email profileImage _id storefrontId");
 
 		if (!orders || orders.length === 0) {
 			return res.status(404).json({ success: false, message: "No purchases found" });
@@ -555,11 +617,15 @@ export const getPurchaseItems = async (req, res) => {
 				charityProfit: product.charityProfit || 0,
 				adminFee: product.adminFee || 0,
 				productImages: product.productId?.images || [],
-				sellerId: product.seller?._id || null,
-				sellerName: `${product.seller?.firstName || "Unknown"} ${product.seller?.lastName || ""
-					}`.trim(),
-				sellerEmail: product.seller?.email || null,
-				sellerProfileImage: product.seller?.profileImage || null,
+				sellerId: product.productId?.seller?._id || product.seller?._id || product.charity?._id || null,
+				sellerName: (product.seller?.firstName && product.seller?.lastName
+					? `${product.seller.firstName} ${product.seller.lastName}`.trim()
+					: product.charity?.charityName ||
+					product.productId?.seller?.charityName ||
+					product.charity?.charityName
+				) || "",
+				sellerEmail: product.productId?.seller?.email || product.seller?.email || product.charity?.email || null,
+				sellerProfileImage: product.productId?.seller?.profileImage || product.seller?.profileImage || product.charity?.profileImage || null,
 				charityId: product.charity?._id || null,
 				charityName: product.charity?.charityName || "Unknown Charity",
 				charityProfileImage: product.charity?.profileImage || null,
@@ -573,13 +639,19 @@ export const getPurchaseItems = async (req, res) => {
 					postcode: order.shippingAddress?.postcode || "",
 				},
 				paymentMethod: order.paymentMethod || null,
+				paymentConfirmedAt: order.paymentConfirmedAt || null,
+				paymentStatus: order.paymentStatus || null,
+				paymentConfirmed: order.paymentConfirmed || null,
+				shipStationOrderId: order.shipStationOrderId || null,
+				shipmentCost: order.shipmentCost || null,
+				totalAmount: order.totalAmount || null,
 				orderStatus: order.orderStatus || "Unknown",
 				status: order.status || "Unknown",
 				createdAt: order.createdAt,
 				updatedAt: order.updatedAt,
 			}))
 		);
-
+		purchaseItems.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 		// Function to calculate stats within a date range
 		const calculateStats = (orders, rangeStart, rangeEnd) => {
 			const filteredOrders = orders.filter(
@@ -1137,3 +1209,4 @@ export const getCurrentUserPurchaseItems = async (req, res) => {
 		res.status(500).json({ error: "Failed to fetch purchase items" });
 	}
 };
+

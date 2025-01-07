@@ -1,13 +1,114 @@
 import Favorite from "../../models/Favorite.model";
-import Product from "../../models/Product.model"; // Ensure Product model is imported
-import Charity from "../../models/Charity.model"; // Ensure Charity model is imported
+import Product from "../../models/Product.model"; 
+import Charity from "../../models/Charity.model"; 
 import Notification from "../../models/Notification.model";
 
+
+// export const toggleFavorite = async (req, res) => {
+// 	const userId = req.user?._id || req.body.userId;
+// 	const { itemId, type } = req.body;
+
+// 	console.log("Received Request Data:", { userId, itemId, type }); 
+
+// 	if (!userId || !itemId || !type) {
+// 		return res
+// 			.status(400)
+// 			.json({ message: "userId, itemId, and type are required." });
+// 	}
+
+// 	try {
+// 		let favorite = await Favorite.findOne({ user: userId });
+
+// 		let actionType; 
+
+// 		if (!favorite) {
+// 			// Create a new favourite entry if it doesn't exist
+// 			favorite = new Favorite({ user: userId, items: [{ itemId, type }] });
+// 			actionType = "MARK";
+// 		} else {
+// 			const existingIndex = favorite.items.findIndex(
+// 				(item) => item.itemId === itemId && item.type === type
+// 			);
+
+// 			if (existingIndex > -1) {
+// 				// Remove if the item already exists (toggle off)
+// 				favorite.items.splice(existingIndex, 1);
+// 				actionType = "UNMARK";
+// 			} else {
+// 				// Add if the item doesn't exist (toggle on)
+// 				favorite.items.push({ itemId, type });
+// 				actionType = "MARK";
+// 			}
+// 		}
+
+// 		const product = await Product.findById(itemId).populate("seller charity");
+
+// 		if (!product) {
+// 			return res.status(404).json({ message: "Product not found." });
+// 		}
+
+// 		const { seller, charity, name, images } = product;
+
+// 		// Determine sellerType and recipient details
+// 		let sellerType = null;
+// 		let recipientId = null;
+
+// 		if (seller) {
+// 			sellerType = "USER";
+// 			recipientId = seller._id;
+// 		} else if (charity) {
+// 			sellerType = "CHARITY";
+// 			recipientId = charity._id;
+// 		}
+
+// 		if (!sellerType || !recipientId) {
+// 			return res
+// 				.status(400)
+// 				.json({ message: "Product seller details are missing." });
+// 		}
+
+		
+// 		await favorite.save();
+
+// 		// Return updated favorite items to keep frontend in sync
+// 		const updatedFavorites = await Favorite.findOne({ user: userId });
+// 		// Trigger notification for the seller or charity
+// 		const notificationPayload = {
+// 			recipientId,
+// 			recipientType: sellerType,
+// 			notificationType: "FAVORITE_MARKED",
+// 			message:
+// 				actionType === "MARK"
+// 					? `Your product "${name}" has been marked as a favourite!`
+// 					: `Your product "${name}" has been unmarked as a favourite!`,
+// 			metadata: {
+// 				productId: itemId,
+// 				productImage: images?.[0], 
+// 			},
+// 			isRead: false,
+// 		};
+
+// 		console.log("Notification Payload:", notificationPayload);
+
+// 		await Notification.create(notificationPayload);
+// 		res.status(200).json({
+// 			message:
+// 				actionType === "MARK"
+// 					? "Product marked as favourite successfully"
+// 					: "Product unmarked as favourite successfully",
+// 			favorite: updatedFavorites,
+// 		});
+// 	} catch (error) {
+// 		console.error("Error toggling favorite:", error);
+// 		res.status(500).json({ message: "Internal server error", error });
+// 	}
+// };
+
 export const toggleFavorite = async (req, res) => {
-	const userId = req.user?._id || req.body.userId; // Ensure userId is derived
+	const userId = req.user?._id || req.body.userId;
 	const { itemId, type } = req.body;
 
-	console.log("Received Request Data:", { userId, itemId, type }); // Debugging log
+	console.log("Received Request Data:", { userId, itemId, type });
 
 	if (!userId || !itemId || !type) {
 		return res
@@ -17,8 +118,7 @@ export const toggleFavorite = async (req, res) => {
 
 	try {
 		let favorite = await Favorite.findOne({ user: userId });
-
-		let actionType; // Define whether this is a mark or unmark action
+		let actionType;
 
 		if (!favorite) {
 			// Create a new favorite entry if it doesn't exist
@@ -40,62 +140,96 @@ export const toggleFavorite = async (req, res) => {
 			}
 		}
 
-		const product = await Product.findById(itemId).populate("seller charity");
-
-		if (!product) {
-			return res.status(404).json({ message: "Product not found." });
-		}
-
-		const { seller, charity, name, images } = product;
-
-		// Determine sellerType and recipient details
-		let sellerType = null;
-		let recipientId = null;
-
-		if (seller) {
-			sellerType = "USER";
-			recipientId = seller._id;
-		} else if (charity) {
-			sellerType = "CHARITY";
-			recipientId = charity._id;
-		}
-
-		if (!sellerType || !recipientId) {
-			return res
-				.status(400)
-				.json({ message: "Product seller details are missing." });
-		}
-
-		
 		await favorite.save();
 
-		// Return updated favorite items to keep frontend in sync
-		const updatedFavorites = await Favorite.findOne({ user: userId });
-		// Trigger notification for the seller or charity
-		const notificationPayload = {
-			recipientId,
-			recipientType: sellerType,
-			notificationType: "FAVORITE_MARKED",
-			message:
-				actionType === "MARK"
-					? `Your product "${name}" has been marked as a favorite!`
-					: `Your product "${name}" has been unmarked as a favorite!`,
-			metadata: {
-				productId: itemId,
-				productImage: images?.[0], // Assuming images is an array
-			},
-			isRead: false,
-		};
+		let notificationPayload = null;
 
-		console.log("Notification Payload:", notificationPayload);
+		// Handle `Product` type
+		if (type === "Product") {
+			const product = await Product.findById(itemId).populate("seller charity");
 
-		await Notification.create(notificationPayload);
+			if (!product) {
+				return res.status(404).json({ message: "Product not found." });
+			}
+
+			const { seller, charity, name, images } = product;
+
+					// Determine sellerType and recipient details
+					let sellerType = null;
+					let recipientId = null;
+
+					if (seller) {
+						sellerType = "USER";
+						recipientId = seller._id;
+					} else if (charity) {
+						sellerType = "CHARITY";
+						recipientId = charity._id;
+					}
+
+					if (!sellerType || !recipientId) {
+						return res
+							.status(400)
+							.json({ message: "Product seller details are missing." });
+					}
+					// Trigger notification for the seller or charity
+					const notificationPayload = {
+						recipientId,
+						recipientType: sellerType,
+						notificationType: "FAVORITE_MARKED",
+						message:
+							actionType === "MARK"
+								? `Your product "${name}" has been marked as a favourite!`
+								: `Your product "${name}" has been unmarked as a favourite!`,
+						metadata: {
+							productId: itemId,
+							productImage: images?.[0],
+						},
+						isRead: false,
+					};
+
+					console.log("Notification Payload:", notificationPayload);
+
+					await Notification.create(notificationPayload);
+		}
+
+		// Handle `Charity` type
+		if (type === "Charity") {
+			const charity = await Charity.findById(itemId);
+			const { charityName, profileImage, charityBannerImage } = charity;
+			if (!charity) {
+				return res.status(404).json({ message: "Charity not found." });
+			}
+
+			notificationPayload = {
+				recipientId: charity._id,
+				recipientType: "CHARITY",
+				notificationType: "FAVORITE_MARKED",
+				message:
+					actionType === "MARK"
+						? `Your charity storefront "${charity.charityName}" has been marked as a favorite!`
+						: `Your charity storefront "${charity.charityName}" has been unmarked as a favorite!`,
+				metadata: {
+					charityId: itemId,
+					charityName: charityName,
+					profileImage: profileImage,
+					charityBannerImage: charityBannerImage,
+				},
+				isRead: false,
+			};
+		}
+
+		// Create the notification if applicable
+		if (notificationPayload) {
+			await Notification.create(notificationPayload);
+			console.log("Notification created:", notificationPayload);
+		}
+
 		res.status(200).json({
 			message:
 				actionType === "MARK"
-					? "Product marked as favorite successfully"
-					: "Product unmarked as favorite successfully",
-			favorite: updatedFavorites,
+					? "Favorite marked successfully"
+					: "Favorite unmarked successfully",
+			favorite: favorite.items,
 		});
 	} catch (error) {
 		console.error("Error toggling favorite:", error);
@@ -237,7 +371,7 @@ export const getFavorites = async (req, res) => {
 
 	try {
 		const favorite = await Favorite.findOne({ user: userId });
-		console.log("Fetched Favorites:", favorite); // Debug log
+		console.log("Fetched favourite:", favorite); // Debug log
 
 		if (!favorite) {
 			return res
@@ -294,7 +428,7 @@ export const getFavorites = async (req, res) => {
 			favoriteCharities,
 		});
 	} catch (error) {
-		console.error("Error fetching favorites:", error);
+		console.error("Error fetching favourite:", error);
 		res.status(500).json({ message: "Internal server error", error });
 	}
 };
@@ -314,7 +448,7 @@ export const getFavoriteCount = async (req, res) => {
 
 		res.status(200).json({ favoriteCount });
 	} catch (error) {
-		console.error("Error fetching favorite count:", error);
+		console.error("Error fetching favourite count:", error);
 		res.status(500).json({ message: "Internal server error", error });
 	}
 };

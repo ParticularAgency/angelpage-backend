@@ -96,7 +96,7 @@ const OrderSchema = new mongoose_1.Schema({
     paymentConfirmed: { type: Boolean, default: false },
     shippingAddress: { type: ShippingAddressSchema, required: true },
     paymentMethod: { type: PaymentMethodSchema, required: true },
-    // createdAt: { type: Date, default: Date.now },
+    paymentConfirmedAt: { type: Date, default: null },
     carrierCode: { type: String },
     serviceCode: { type: String },
     trackingNumber: { type: String },

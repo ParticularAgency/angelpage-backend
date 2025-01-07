@@ -11,6 +11,7 @@ import orderRoutes from "../api/orders/orders.routes"; // Adjust the path as nec
 import emailRoutes from "../api/email/email.routes"; // Adjust the path as necessary, based on your folder structure
 import searchRoutes from "../api/Search/search.routes"; // Adjust the path as necessary, based on your folder structure
 import notificationRoutes from "../api/notifications/notifications.routes"; // Adjust the path as necessary, based on your folder structure
+import messageRoutes from "../api/messages/messages.routes"; // Adjust the path as necessary, based on your folder structure
 
 const router = Router();
 
@@ -32,6 +33,7 @@ router.use("/order", orderRoutes); // All routes under "/auth" will be handled b
 router.use("/email", emailRoutes); // All routes under "/auth" will be handled by authRoutes
 router.use("/search", searchRoutes); // All routes under "/auth" will be handled by authRoutes
 router.use("/notification", notificationRoutes); // All routes under "/auth" will be handled by authRoutes
+router.use("/message", messageRoutes); // All routes under "/auth" will be handled by authRoutes
 
 export default router;
  

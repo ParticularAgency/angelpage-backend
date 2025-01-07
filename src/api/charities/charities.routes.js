@@ -13,8 +13,9 @@ import {
 	getCharityAdminInfo,
 	updateCharityAdminInfo,
 	getCharityList,
-	getCharityDetails
-	// getStorefrontData,
+	getCharityDetails,
+	generateStripeOAuthUrl,
+	stripeOAuthCallback,
 } from "./charities.controller";
 
 const router = Router();
@@ -57,7 +58,8 @@ router.get("/charities", getCharityList);
 
 router.get("/charities/:charityid", getCharityDetails);
 
-// storefront data routes
-// router.get("/storefront/:storefrontid", getStorefrontData);
+router.post("/stripe/connect-url", generateStripeOAuthUrl);
+
+router.get('/stripe/connect/callback', stripeOAuthCallback);
 
 export default router;
