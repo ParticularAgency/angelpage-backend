@@ -31,7 +31,7 @@ const MessageSchema = new mongoose_1.default.Schema({
         required: true,
     },
     content: { type: String, required: true },
-    unread: { type: Boolean, default: true },
+    status: { type: String, enum: ["unread", "read"], default: "unread" },
     createdAt: { type: Date, default: Date.now },
 });
 exports.default = mongoose_1.default.model("Message", MessageSchema);

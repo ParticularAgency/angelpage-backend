@@ -56,7 +56,7 @@ const getProductOnCart = (req, res) => __awaiter(void 0, void 0, void 0, functio
     try {
         const cart = yield Cart_model_1.default.findOne({ userId }).populate({
             path: "items.productId",
-            select: "name price selectedCharityName selectedCharityId brand images seller charity charityProfit",
+            select: "name price weight dimensions selectedCharityName selectedCharityId brand images seller charity charityProfit",
             populate: [
                 {
                     path: "seller",

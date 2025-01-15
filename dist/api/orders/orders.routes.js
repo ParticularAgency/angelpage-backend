@@ -13,7 +13,7 @@ router.get("/carrier", orders_controller_1.getCarriers);
 // Route to get services for a specific carrier
 router.get("/carriers/:carrierCode/services", orders_controller_1.getServices);
 // Route to get packages for a specific carrier 
-// router.get("/carriers/:carrierCode/packages", getPackages);
+router.get("/carriers/:carrierCode/packages", orders_controller_1.getPackages);
 router.get("/seller/:sellerId/orders", (0, auth_middleware_1.authMiddleware)(), orders_controller_1.getAllOrdersForSeller);
 // Get orders for a specific user
 router.get("/user/:userId", orders_controller_1.getOrdersByUser);
@@ -29,8 +29,10 @@ router.get("/items/sold", orders_controller_1.getTotalSoldItems);
 router.get("/admin/sales-total", orders_controller_1.getTotalSalesStats);
 // Get buyer purchases
 router.get("/buyer/:buyerId/purchases", orders_controller_1.getBuyerPurchases);
-// router.get("/carriers/:carrierId/services", getCarrierServices);
-// router.post("/pickups", schedulePickup);
+// // Cancel order and delete from ShipStation
+// router.patch("/orders/:orderId/delete", cancelOrder);
+// // Permanently delete order from the database
+router.get("/orders/:orderId/track", orders_controller_1.orderTracking);
 router.get("/users/:sellerId/dashboard-sales-analytics", (0, auth_middleware_1.authMiddleware)(), orders_controller_1.getCurretnUserSoldItems);
 router.get("/users/:buyerId/dashboard-purchase-analytics", (0, auth_middleware_1.authMiddleware)(), orders_controller_1.getCurrentUserPurchaseItems);
 router.post("/update-order-status", orders_controller_1.updateOrderStatus);

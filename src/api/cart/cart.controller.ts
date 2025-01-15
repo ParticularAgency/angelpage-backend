@@ -48,7 +48,7 @@ export const getProductOnCart = async (req: Request, res: Response) => {
 		const cart = await Cart.findOne({ userId }).populate({
 			path: "items.productId",
 			select:
-				"name price selectedCharityName selectedCharityId brand images seller charity charityProfit",
+				"name price weight dimensions selectedCharityName selectedCharityId brand images seller charity charityProfit",
 			populate: [
 				{
 					path: "seller",

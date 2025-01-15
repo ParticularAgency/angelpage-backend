@@ -151,12 +151,10 @@ const toggleFavorite = (req, res) => __awaiter(void 0, void 0, void 0, function*
                 recipientId = charity._id;
             }
             if (!sellerType || !recipientId) {
-                return res
-                    .status(400)
-                    .json({ message: "Product seller details are missing." });
+                return res.status(400).json({ message: "Product seller details are missing." });
             }
             // Trigger notification for the seller or charity
-            const notificationPayload = {
+            notificationPayload = {
                 recipientId,
                 recipientType: sellerType,
                 notificationType: "FAVORITE_MARKED",
@@ -169,31 +167,31 @@ const toggleFavorite = (req, res) => __awaiter(void 0, void 0, void 0, function*
                 },
                 isRead: false,
             };
-            console.log("Notification Payload:", notificationPayload);
-            yield Notification_model_1.default.create(notificationPayload);
+            console.log("Notification Payload for Product:", notificationPayload);
         }
         // Handle `Charity` type
         if (type === "Charity") {
             const charity = yield Charity_model_1.default.findById(itemId);
-            const { charityName, profileImage, charityBannerImage } = charity;
             if (!charity) {
                 return res.status(404).json({ message: "Charity not found." });
             }
+            const { charityName, profileImage, charityBannerImage } = charity;
             notificationPayload = {
                 recipientId: charity._id,
                 recipientType: "CHARITY",
                 notificationType: "FAVORITE_MARKED",
                 message: actionType === "MARK"
-                    ? `Your charity storefront "${charity.charityName}" has been marked as a favorite!`
-                    : `Your charity storefront "${charity.charityName}" has been unmarked as a favorite!`,
+                    ? `Your charity storefront "${charityName}" has been marked as a favorite!`
+                    : `Your charity storefront "${charityName}" has been unmarked as a favorite!`,
                 metadata: {
                     charityId: itemId,
-                    charityName: charityName,
-                    profileImage: profileImage,
-                    charityBannerImage: charityBannerImage,
+                    charityName,
+                    profileImage,
+                    charityBannerImage,
                 },
                 isRead: false,
             };
+            console.log("Notification Payload for Charity:", notificationPayload);
         }
         // Create the notification if applicable
         if (notificationPayload) {

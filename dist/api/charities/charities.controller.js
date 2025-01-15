@@ -363,8 +363,11 @@ const generateStripeOAuthUrl = (_req, res) => __awaiter(void 0, void 0, void 0, 
 });
 exports.generateStripeOAuthUrl = generateStripeOAuthUrl;
 // Handle the Stripe OAuth callback
+// Handle the Stripe OAuth callback
 const stripeOAuthCallback = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { code } = req.query; // The 'code' parameter that Stripe sends in the query string
+    var _a;
+    const { code } = req.query; // Authorization code sent by Stripe
+    // Validate the code
     if (!code) {
         return res.status(400).json({ message: 'Authorization code not found.' });
     }
@@ -374,21 +377,49 @@ const stripeOAuthCallback = (req, res) => __awaiter(void 0, void 0, void 0, func
             grant_type: 'authorization_code',
             code: code,
         });
-        const stripeAccountId = response.stripe_user_id; // Charity's connected Stripe account ID
-        // Save the Stripe account ID in the charity's record
-        const charity = yield Charity_model_1.default.findOne({ email: response.email });
-        if (charity) {
-            charity.stripeAccountId = stripeAccountId; // Store the Stripe account ID
-            yield charity.save();
-            return res.status(200).json({ message: 'Stripe account connected successfully' });
+        // Destructure response data
+        const stripeAccountId = response.stripe_user_id; // Stripe account ID
+        const stripeEmail = response.email; // Email from Stripe response (if available)
+        // Log Stripe response for debugging
+        console.log('Stripe OAuth Token Response:', response);
+        let charity = null;
+        if (stripeEmail) {
+            // Try to find the charity by email
+            charity = yield Charity_model_1.default.findOne({ email: stripeEmail });
+            if (!charity)
+                console.log(`No charity found with email: ${stripeEmail}`);
         }
         else {
-            return res.status(404).json({ message: 'Charity not found' });
+            // Fallback to userId if email is not available
+            const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.userId;
+            console.log(`User ID from request: ${userId}`);
+            if (userId) {
+                charity = yield Charity_model_1.default.findById(userId);
+                if (!charity)
+                    console.log(`No charity found with user ID: ${userId}`);
+            }
         }
+        if (!charity) {
+            return res.status(404).json({ message: 'Charity not found. Ensure the charity exists in the database.' });
+        }
+        // Save the Stripe account ID to the charity's record
+        charity.stripeAccountId = stripeAccountId;
+        yield charity.save();
+        // Log success for debugging
+        console.log(`Stripe account connected successfully for charity: ${charity._id}`);
+        // Redirect to success page or return response
+        return res.status(200).json({
+            message: 'Stripe account connected successfully',
+            stripeAccountId,
+        });
     }
     catch (error) {
         console.error('Stripe OAuth error:', error);
-        return res.status(500).json({ message: 'Error connecting Stripe account' });
+        // Handle Stripe-specific errors
+        if (error.type === 'StripeInvalidGrantError') {
+            return res.status(400).json({ message: 'Invalid authorization code' });
+        }
+        return res.status(500).json({ message: 'Error connecting Stripe account', error: error.message });
     }
 });
 exports.stripeOAuthCallback = stripeOAuthCallback;

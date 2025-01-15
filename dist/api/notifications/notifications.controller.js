@@ -14,6 +14,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.removeNotification = exports.markAllNotificationsAsRead = exports.getCurrentUserNotifications = exports.createNotification = void 0;
 const Notification_model_1 = __importDefault(require("../../models/Notification.model"));
+const server_1 = require("../../server");
 // Create a notification (already implemented, just updated argument names for clarity)
 const createNotification = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -31,6 +32,8 @@ const createNotification = (req, res) => __awaiter(void 0, void 0, void 0, funct
             isRead: false,
         });
         yield notification.save();
+        // Emit event to all connected clients
+        server_1.io.emit('new-notification', notification);
         res.status(201).json({ success: true, notification });
     }
     catch (error) {

@@ -2,18 +2,16 @@ import { Router } from "express";
 import {
 	createOrder,
 	getCarriers,
-	// getPackages,
+	getPackages,
 	getServices,
-	// trackPackage,
-	// schedulePickup,
-	// getLabel,
-	// updateTrackingStatus,
+	// cancelOrder,
+	// deleteOrderPermanently,
 	getOrdersByUser,
 	getSoldItems,
 	getPurchaseItems,
 	getTotalSoldItems,
 	getBuyerPurchases,
-	// getCarrierServices,
+	orderTracking,
 	updateOrderStatus,
 	getCurretnUserSoldItems,
 	getCurrentUserPurchaseItems,
@@ -24,7 +22,6 @@ import {
 	updateOrderStatusToDelivered,
 	getAllOrdersForSeller,
 	updateOrderStatusToShipped,
- 
 } from "./orders.controller";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 
@@ -44,7 +41,7 @@ router.get("/carrier", getCarriers);
 router.get("/carriers/:carrierCode/services", getServices);
 
 // Route to get packages for a specific carrier 
-// router.get("/carriers/:carrierCode/packages", getPackages);
+router.get("/carriers/:carrierCode/packages", getPackages);
 
 router.get("/seller/:sellerId/orders", authMiddleware(), getAllOrdersForSeller);
 
@@ -80,8 +77,12 @@ router.get("/admin/sales-total", getTotalSalesStats);
 router.get("/buyer/:buyerId/purchases", getBuyerPurchases);
 
 
-// router.get("/carriers/:carrierId/services", getCarrierServices);
-// router.post("/pickups", schedulePickup);
+// // Cancel order and delete from ShipStation
+// router.patch("/orders/:orderId/delete", cancelOrder);
+
+// // Permanently delete order from the database
+router.get("/orders/:orderId/track", orderTracking);
+
 
 router.get(
 	"/users/:sellerId/dashboard-sales-analytics",

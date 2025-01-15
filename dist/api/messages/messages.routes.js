@@ -12,4 +12,7 @@ router.post("/messages/send", (0, auth_middleware_1.authMiddleware)(), messages_
 router.get("/conversations/:conversationId", (0, auth_middleware_1.authMiddleware)(), messages_controller_1.fetchConversation);
 router.get("/messages/recipient/:userId", (0, auth_middleware_1.authMiddleware)(), messages_controller_1.fetchRecipientMessages);
 router.get("/conversations/:userId", messages_controller_1.getUserConversations);
+router.get("/unread-messages/:userId", messages_controller_1.fetchUnreadMessagesForRecipient);
+router.get("/user/:userId/:role", (0, auth_middleware_1.authMiddleware)(), messages_controller_1.getUserDetailsWithRole);
+router.post("/messages/mark-as-read", messages_controller_1.markMessagesAsRead);
 exports.default = router;

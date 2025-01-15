@@ -2,6 +2,7 @@ import axios from "axios";
 import { Buffer } from "buffer";
 import Order from "../../models/Order.model";
 import Cart from "../../models/Cart.model";
+// import { shipStationClient } from "../../utils/shipstation";
 import { startOfWeek, subWeeks, startOfMonth, subMonths, startOfYear, subYears } from "date-fns";
 
 
@@ -22,13 +23,16 @@ export const createOrder = async (req, res) => {
 		paymentMethod,
 		carrierCode,
 		serviceCode,
-		shipmentCost, 
+		shipmentCost,
+		// combinedDimensions,
+		// totalWeight,
 		paymentConfirmedAt,
+		packageCode = "package",
 		adminAccountId = process.env.STRIPE_ADMIN_ACCOUNT_ID,
 	} = req.body;
 
 	try {
-		if (!buyerId || !products || products.length === 0 || !shippingAddress || !adminAccountId || !paymentMethod || !carrierCode || !serviceCode ||
+		if (!buyerId || !products || products.length === 0 || !shippingAddress || !adminAccountId || !paymentMethod || !carrierCode || !serviceCode  ||
 			shipmentCost === undefined) {
 			return res.status(400).json({ error: "Invalid order details" });
 		}
@@ -37,16 +41,32 @@ export const createOrder = async (req, res) => {
 			const totalCost = product.price * product.quantity;
 			const charityProfit = totalCost * 0.9;
 			const adminFee = totalCost * 0.1;
-
+			const totalWeight = parseFloat(product.weight || 0) * product.quantity;
 			return {
 				...product,
 				seller: product.seller || null,
 				totalProductCost: totalCost,
 				charityProfit,
 				adminFee,
+				totalWeight,
+				dimensions: {
+					length: parseFloat(product.dimensions?.depth || 0),
+					width: parseFloat(product.dimensions?.width || 0),
+					height: parseFloat(product.dimensions?.height || 0) * product.quantity,
+				},
 			};
 		});
-
+		// Calculate the total weight for all products
+		const totalWeight = enrichedProducts.reduce((sum, product) => sum + product.totalWeight, 0);
+		const combinedDimensions = enrichedProducts.reduce(
+			(acc, product) => {
+				acc.length = Math.max(acc.length, product.dimensions.length);
+				acc.width = Math.max(acc.width, product.dimensions.width);
+				acc.height += product.dimensions.height; 
+				return acc;
+			},
+			{ length: 0, width: 0, height: 0 }
+		);
 		const totalAmount = enrichedProducts.reduce((sum, product) => sum + product.totalProductCost, 0);
 		const grandTotal = totalAmount + shipmentCost;
 		// Generate numeric ShipStation order ID
@@ -57,30 +77,39 @@ export const createOrder = async (req, res) => {
 			products: enrichedProducts,
 			totalAmount,
 			shipmentCost,
-			grandTotal, 
+			grandTotal,
+			combinedDimensions,
+			totalWeight,
+			dimensions: {
+				units: 'inches',
+				length: combinedDimensions.length,
+				width: combinedDimensions.width,
+				height: combinedDimensions.height,
+			},
+			packageCode,
 			shippingAddress,
 			paymentMethod,
 			carrierCode,
 			serviceCode,
 			paymentStatus: "Pending",
 			paymentConfirmed: false,
-            paymentConfirmedAt,
+			paymentConfirmedAt,
 			shipStationOrderId: numericShipStationOrderId,
 			status: "OrderPlaced",
 		});
 
 		await newOrder.save();
 
-				// Create a PaymentIntent
-				const paymentIntent = await stripe.paymentIntents.create({
-					amount: Math.round(grandTotal * 100), // Stripe expects amount in cents
-					currency: "gbp",
-					payment_method_types: ["card"],
-					metadata: { orderId: newOrder._id.toString() },
-					
-				});
-				
-	
+		// Create a PaymentIntent
+		const paymentIntent = await stripe.paymentIntents.create({
+			amount: Math.round(grandTotal * 100), // Stripe expects amount in cents
+			currency: "gbp",
+			payment_method_types: ["card"],
+			metadata: { orderId: newOrder._id.toString() },
+
+		});
+
+
 		await Cart.findOneAndUpdate({ userId: buyerId }, { items: [] });
 
 		// ShipStation integration
@@ -115,26 +144,24 @@ export const createOrder = async (req, res) => {
 				name: product.name,
 				quantity: product.quantity,
 				unitPrice: product.price,
-				
 				total: product.totalProductCost, // Ensure the total cost of this product
 			})),
 			amountPaid: totalAmount + shipmentCost, // Ensure this includes shipping
 			shippingAmount: shipmentCost,
-			taxAmount: 0, // Add tax if applicable
-			// weight: {
-			// 	value: totalWeight, // Calculate total weight of the order
-			// 	units: "ounces",
-			// },
-			// dimensions: {
-			// 	units: "inches",
-			// 	length: totalDimensions.length, // Calculate total package length
-			// 	width: totalDimensions.width, // Calculate total package width
-			// 	height: totalDimensions.height, // Calculate total package height
-			// },
+			taxAmount: 0,
+			packageCode: "package",
+			
+			weight: { value: totalWeight, units: 'ounces' },
+			dimensions: {
+				units: 'inches',
+				length: combinedDimensions.length,
+				width: combinedDimensions.width,
+				height: combinedDimensions.height,
+			},
 			carrierCode: carrierCode,
 			serviceCode: serviceCode,
 		};
-	
+
 
 		try {
 			const orderResponse = await axios.post(
@@ -180,39 +207,6 @@ export const createOrder = async (req, res) => {
 	}
 };
 
-// Endpoint to update order status and payment status
-export const updateOrderStatus = async (req, res) => {
-	const { orderId, status, orderStatus, paymentStatus, paymentConfirmed, paymentConfirmedAt } = req.body;
-
-	try {
-		const order = await Order.findById(orderId);
-
-		if (!order) {
-			return res.status(404).json({ error: 'Order not found' });
-		}
-
-		// Update order status and payment status
-		order.status = status || order.status;
-		order.orderStatus = orderStatus || order.orderStatus;
-		order.paymentStatus = paymentStatus || order.paymentStatus;
-		order.paymentConfirmed = paymentConfirmed || order.paymentConfirmed;
-
-		// If payment is successful, store the payment confirmation time
-		if (paymentConfirmedAt) {
-			order.paymentConfirmedAt = paymentConfirmedAt; // Use the value from the request
-		}
-
-		await order.save();
-
-		res.status(200).json({ success: true, message: 'Order status updated successfully', order });
-	} catch (error) {
-		console.error("Error updating order status:", error);
-		res.status(500).json({ error: error.message || "Failed to update order status" });
-	}
-};
-
-
-
 export const getRates = async (req, res) => {
 	const {
 		carrierCode,
@@ -222,15 +216,60 @@ export const getRates = async (req, res) => {
 		fromState,
 		toPostalCode,
 		toCountry,
-		weight,
-		dimensions,
+		products,
 	} = req.body;
 
-	if (!carrierCode || !fromPostalCode || !toPostalCode || !toCountry || !weight) {
+	// Validate required fields
+	if (!carrierCode || !fromPostalCode || !toPostalCode || !toCountry || !products || products.length === 0) {
+		console.error("Missing required fields:", {
+			carrierCode,
+			serviceCode,
+			fromPostalCode,
+			toPostalCode,
+			toCountry,
+			products,
+		});
 		return res.status(400).json({ error: "Missing required fields for rate calculation." });
 	}
 
 	try {
+		// Enrich products to calculate total weight and dimensions
+		const enrichedProducts = products.map((product) => {
+			const totalWeight = parseFloat(product.weight || 0) * product.quantity; // Total weight for the product
+			const dimensions = {
+				length: parseFloat(product.dimensions?.depth || 0), // Use `depth` as `length`
+				width: parseFloat(product.dimensions?.width || 0),
+				height: parseFloat(product.dimensions?.height || 0) * product.quantity, // Stack height
+			};
+
+			return {
+				...product,
+				totalWeight,
+				dimensions,
+			};
+		});
+
+		// Aggregate total weight and combined dimensions
+		const totalWeight = enrichedProducts.reduce((sum, product) => sum + product.totalWeight, 0);
+		const combinedDimensions = enrichedProducts.reduce(
+			(acc, product) => {
+				acc.length = Math.max(acc.length, product.dimensions.length); // Use the largest `length`
+				acc.width = Math.max(acc.width, product.dimensions.width);   // Use the largest `width`
+				acc.height += product.dimensions.height;                    // Sum the `height` (stacking)
+				return acc;
+			},
+			{ length: 0, width: 0, height: 0 } // Initial dimensions
+		);
+
+		// Validate calculated dimensions
+		if (!totalWeight || !combinedDimensions.length || !combinedDimensions.width || !combinedDimensions.height) {
+			console.error("Invalid totalWeight or dimensions:", {
+				totalWeight,
+				combinedDimensions,
+			});
+			return res.status(400).json({ error: "Invalid total weight or dimensions." });
+		}
+
 		const payload = {
 			carrierCode,
 			serviceCode: serviceCode || null,
@@ -239,8 +278,13 @@ export const getRates = async (req, res) => {
 			fromState: fromState || null,
 			toPostalCode,
 			toCountry,
-			weight,
-			dimensions: dimensions || null,
+			weight: { value: totalWeight, units: 'ounces' },
+			dimensions: {
+				units: 'inches',
+				length: combinedDimensions.length,
+				width: combinedDimensions.width,
+				height: combinedDimensions.height,
+			},
 			residential: true, // Assume residential address by default
 		};
 
@@ -279,6 +323,8 @@ export const getRates = async (req, res) => {
 		});
 	}
 };
+
+
 export const createLabelForOrder = async (req, res) => {
 	const { orderId } = req.params;
 
@@ -289,72 +335,151 @@ export const createLabelForOrder = async (req, res) => {
 			return res.status(404).json({ error: "Order not found" });
 		}
 
+		// Check if a label has already been created for this order
+		if (order.status === "LabelCreated") {
+			return res.status(400).json({
+				success: false,
+				message: "Label has already been created for this order.",
+			});
+		}
+
 		if (!order.shipStationOrderId) {
 			return res.status(400).json({ error: "Order not synced with ShipStation" });
 		}
+ 
+		// Step 2: Validate if the database has all the required fields
+		if (
+			!order.carrierCode ||
+			!order.serviceCode ||
+			!order.packageCode ||
+			!order.totalWeight ||
+			!order.shippingAddress?.address ||
+			!order.shippingAddress?.city ||
+			!order.shippingAddress?.postcode ||
+			!order.shippingAddress?.country
+		) {
+			return res.status(400).json({ error: "Order data is incomplete for label creation." });
+		}
 
-		const authToken = Buffer.from(
-			`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
-		).toString("base64");
-
+		// const authToken = Buffer.from(
+		// 	`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
+		// ).toString("base64");
+		// console.log(authToken);
 		const labelPayload = {
-			orderId: order.shipStationOrderId, // Use numeric order ID
-			carrierCode: order.carrierCode,
-			serviceCode: order.serviceCode,
-			packageCode: "package",
-			confirmation: "delivery",
-			shipDate: new Date().toISOString().split("T")[0],
-			weight: {
-				value: 2,
-				units: "pounds",
-			},
-			dimensions: {
-				units: "inches",
-				length: 10,
-				width: 6,
-				height: 4,
-			},
-			testLabel: false,
+			shipment: {
+			orderId: order.shipStationOrderId,
+				carrier_code: order.carrierCode,
+				carrier_id: "se-202244",
+				carrier_name: "EVRi - ShipStation Carrier Services",
+				service_code: order.serviceCode,
+						packageCode: order.packageCode,
+				            confirmation: 'none',
+								shipDate: new Date().toISOString().split("T")[0],
+				packages: [
+					{
+						weight: {
+							value: order.totalWeight,
+							unit: "pound",
+						},
+						dimensions: {
+							unit: "inch",
+							length: order.combinedDimensions.length,
+							width: order.combinedDimensions.width,
+							height: order.combinedDimensions.height,
+						},
+					}
+				],
+				ship_to: {
+					name: 'John Doe', 
+					phone: "+4 444-444-4444",
+					company_name: 'The Home Depot',
+					address_line1: order.shippingAddress.address,
+					city_locality: order.shippingAddress.city,
+					state_province: order.shippingAddress.state || "N/A",
+					postal_code: order.shippingAddress.postcode,
+					country_code: order.shippingAddress.country || "GB",
+					address_residential_indicator: "yes"
+				},
+				ship_from: {
+					name: "Jarvin",
+					company_name: "Angel Page",
+					phone: "+4 555-555-5555",
+					address_line1: '8 Cody Road',
+					city_locality: 'London',
+					state_province: order.shippingAddress.state || "N/A",
+					postal_code: 'E16 4SR',
+					country_code: "GB",
+					address_residential_indicator: "no"
+				},						
+				label_download_type: 'url',
+				label_format: 'pdf',
+				display_scheme: 'label',
+				label_layout: '4x6',
+				label_image_id: 'img_DtBXupDBxREpHnwEXhTfgK',
+				test_label: true,
+			}
 		};
 
 		try {
-			const labelResponse = await axios.post(
-				"https://ssapi.shipstation.com/orders/createlabelfororder",
+			const response = await axios.post(
+				"https://api.shipstation.com/v2/labelst",
 				labelPayload,
 				{
 					headers: {
-						Authorization: `Basic ${authToken}`,
-						"Content-Type": "application/json",
-					},
+						'api-key': 'EoEsrnI8TUp1LWkK0LJwZGSgo6LyFi3JLZg4woQ2G6s',
+					}
 				}
 			);
-
-			const { trackingNumber, labelData, shipmentId, shipmentCost, insuranceCost } = labelResponse.data;
-
-			order.trackingNumber = trackingNumber;
+			const responseData = response.data;
+			// Destructure the response to get the required details
+			const {
+				trackingNumber,
+				tracking_number,
+				labelData,
+				label_download,
+				shipmentId,
+				shipment_id,
+				shipmentCost,
+				shipment_cost,
+				label_id,
+				created_at,
+				tracking_status,
+			} = responseData;
+			if (!label_id || !shipment_id || !tracking_number || !label_download) {
+				throw new Error("Missing required fields in the ShipStation response.");
+			}
+			// Save the label details to the database
+			order.trackingNumber = trackingNumber || tracking_number;
 			order.labelData = labelData;
-			order.shipmentId = shipmentId;
-			order.shipmentCost = shipmentCost;
-			order.insuranceCost = insuranceCost;
-			order.status = "LabelGenerated";
+			order.shipmentId = shipmentId || shipment_id;
+			order.shipmentCost = shipmentCost | shipment_cost?.amount || 0;
+			order.labelId = label_id;
+			order.label_download = label_download.pdf;
+			order.trackingStatus = tracking_status;
+			order.status = "LabelCreated";
+			order.CreateLabelAt = created_at;
+			order.orderStatus = "LabelCreated";
 
+			// Save the updated order to the database
 			await order.save();
 
+			console.log(order);
 			res.status(200).json({
 				success: true,
-				message: "Shipping label created successfully",
+				message: "Label created successfully",
 				order,
 			});
-		} catch (labelError) {
-			console.error("Error generating label:", labelError.response?.data || labelError.message);
+		} catch (error) {
+			console.error("Error generating label:", error.response?.data || error.message);
 			order.status = "LabelFailed";
-			order.tags.push(`LabelFailed: ${JSON.stringify(labelError.response?.data || labelError.message)}`);
+			order.orderStatus = "LabelFailed";
+			order.tags.push(`LabelFailed: ${JSON.stringify(error.response?.data || error.message)}`);
 			await order.save();
 
 			res.status(500).json({
 				success: false,
 				message: "Failed to generate shipping label",
-				error: labelError.response?.data || labelError.message,
+				error: error.response?.data || error.message,
 			});
 		}
 	} catch (error) {
@@ -363,21 +488,100 @@ export const createLabelForOrder = async (req, res) => {
 	}
 };
 
+
+// Endpoint to update order status and payment status
+export const updateOrderStatus = async (req, res) => {
+	const { orderId, status, orderStatus, paymentStatus, paymentConfirmed, paymentConfirmedAt } = req.body;
+
+	try {
+		const order = await Order.findById(orderId);
+
+		if (!order) {
+			return res.status(404).json({ error: 'Order not found' });
+		}
+
+		// Update order status and payment status
+		order.status = status || order.status;
+		order.orderStatus = orderStatus || order.orderStatus;
+		order.paymentStatus = paymentStatus || order.paymentStatus;
+		order.paymentConfirmed = paymentConfirmed || order.paymentConfirmed;
+
+		// If payment is successful, store the payment confirmation time
+		if (paymentConfirmedAt) {
+			order.paymentConfirmedAt = paymentConfirmedAt; // Use the value from the request
+		}
+
+		await order.save();
+
+		res.status(200).json({ success: true, message: 'Order status updated successfully', order });
+	} catch (error) {
+		console.error("Error updating order status:", error);
+		res.status(500).json({ error: error.message || "Failed to update order status" });
+	}
+};
+export const orderTracking = async (req, res) => {
+	const { orderId } = req.params;
+	const { carrierCode, trackingNumber } = req.params;
+	try {
+		// Fetch the order from the database
+		const order = await Order.findById(orderId);
+
+		if (!order) {
+			return res.status(404).json({ error: 'Order not found' });
+		}
+
+		if (!order.trackingNumber) {
+			return res.status(400).json({ error: 'Tracking number not available for this order' });
+		}
+
+		const authToken = Buffer.from(
+			`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
+		).toString('base64');
+
+		// Make a request to ShipStation to get tracking details
+		try {
+			const response = await axios.get(
+				`https://ssapi.shipstation.com/shipments/tracking?carrierCode=${carrierCode}&trackingNumber=${trackingNumber}`,
+				{
+					headers: {
+						Authorization: `Basic ${authToken}`,
+						'Content-Type': 'application/json',
+					},
+				}
+			);
+
+			res.status(200).json({
+				success: true,
+				trackingDetails: response.data,
+			});
+		} catch (error) {
+			console.error('Error fetching tracking information:', error.response?.data || error.message);
+			return res.status(500).json({ error: 'Failed to fetch tracking information' });
+		}
+	} catch (error) {
+		console.error('Error tracking order:', error);
+		res.status(500).json({ error: 'Failed to track order' });
+	}
+};
+
 // Get carriers from ShipStation
 export const getCarriers = async (_req, res) => {
 	try {
-		const authToken = Buffer.from(
-			`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
-		).toString("base64");
-		console.log(authToken)
-		const response = await axios.get("https://ssapi.shipstation.com/carriers", { 
-			headers: {
-				Authorization: `Basic ${authToken}`,
-			},
-		});
+		const apiKeys = 'EoEsrnI8TUp1LWkK0LJwZGSgo6LyFi3JLZg4woQ2G6s';
+		const response = await fetch(
+			`https://api.shipstation.com/v2/carriers`,
+			{
+				method: 'GET',
+				headers: {
+					'api-key': 'EoEsrnI8TUp1LWkK0LJwZGSgo6LyFi3JLZg4woQ2G6s'
+				}
+			}
+		);
 
+		const data = await response.json();
+		console.log(data);
 		// Return carriers to the frontend
-		res.status(200).json({ success: true, carriers: response.data });
+		res.status(200).json({ success: true, carriers: data });
 	} catch (error) {
 		console.error("Error fetching carriers from ShipStation:", error.response?.data || error.message);
 		res.status(500).json({ error: "Failed to fetch carrier list" });
@@ -410,29 +614,29 @@ export const getServices = async (req, res) => {
 };
 
 
-// export const getPackages = async (req, res) => {
-// 	const { carrierCode } = req.params;
+export const getPackages = async (req, res) => {
+	const { carrierCode } = req.params;
 
-// 	try {
-// 		const authToken = Buffer.from(
-// 			`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
-// 		).toString("base64");
+	try {
+		const authToken = Buffer.from(
+			`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
+		).toString("base64");
 
-// 		const response = await axios.get(
-// 			`https://ssapi.shipstation.com/carriers/listpackages?carrierCode=${carrierCode}`,
-// 			{
-// 				headers: {
-// 					Authorization: `Basic ${authToken}`,
-// 				},
-// 			}
-// 		);
+		const response = await axios.get(
+			`https://ssapi.shipstation.com/carriers/listpackages?carrierCode=${carrierCode}`,
+			{
+				headers: {
+					Authorization: `Basic ${authToken}`,
+				},
+			}
+		);
 
-// 		res.status(200).json({ success: true, packages: response.data });
-// 	} catch (error) {
-// 		console.error("Error fetching packages:", error.response?.data || error.message);
-// 		res.status(500).json({ error: "Failed to fetch package list" });
-// 	}
-// };
+		res.status(200).json({ success: true, packages: response.data });
+	} catch (error) {
+		console.error("Error fetching packages:", error.response?.data || error.message);
+		res.status(500).json({ error: "Failed to fetch package list" });
+	}
+};
 
 
 
@@ -483,6 +687,11 @@ export const getSoldItems = async (req, res) => {
 					orderId: order._id,
 					status: order.status,
 					orderStatus: order.orderStatus,
+					label_download: order.label_download,
+					shipmentId: order.shipmentId,
+					labelId: order.labelId,
+					trackingStatus: order.trackingStatus,
+					trackingNumber: order.trackingNumber,
 					buyerId: order.buyerId?._id || null,
 					buyerName: `${order.buyerId?.firstName || "Unknown"} ${order.buyerId?.lastName || ""
 						}`.trim(),
@@ -510,6 +719,10 @@ export const getSoldItems = async (req, res) => {
 					charityProfileImage: product.charity?.profileImage || product.productId?.charity?.profileImage || null,
 					storefrontId: product.charity?.storefrontId || null,
 					orderDate: order.createdAt,
+					tracking_url: order.tracking_url,
+					status_code: order.status_code,
+					status_description: order.status_description,
+					orderNumber: order.orderNumber,
 				})),
 		);
 		soldItems.sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate));
@@ -647,6 +860,17 @@ export const getPurchaseItems = async (req, res) => {
 				totalAmount: order.totalAmount || null,
 				orderStatus: order.orderStatus || "Unknown",
 				status: order.status || "Unknown",
+				trackingNumber: order.trackingNumber,
+				label_download: order.label_download,
+				tracking_url: order.tracking_url,
+				status_code: order.status_code,
+				status_description: order.status_description,
+				orderNumber: order.orderNumber,
+				shipmentId: order.shipmentId,
+				labelId: order.labelId,
+				trackingStatus: order.trackingStatus,
+				serviceCode: order.serviceCode,
+				carrierCode: order.carrierCode,
 				createdAt: order.createdAt,
 				updatedAt: order.updatedAt,
 			}))
@@ -880,37 +1104,127 @@ export const getAllOrdersForSeller = async (req, res) => {
 	}
 };
 
-// Update Order Status to ItemShipped
 export const updateOrderStatusToShipped = async (req, res) => {
 	const { orderId } = req.params;
-	const { trackingNumber, carrierCode, labelId, serviceCode, orderStatus } = req.body;
+	const {
+		trackingNumber,
+		carrierCode,
+		labelId,
+		serviceCode,
+		notifyCustomer = false,
+		notifySalesChannel = false,
+	} = req.body;
 
 	try {
 		// Validate the input
 		if (!trackingNumber) {
 			return res.status(400).json({ error: "Tracking number is required" });
 		}
+		if (!carrierCode) {
+			return res.status(400).json({ error: "Carrier code is required" });
+		}
 
-		// Find and update the order
+		// Find the order in the database
 		const order = await Order.findById(orderId);
-
 		if (!order) {
 			return res.status(404).json({ error: "Order not found" });
 		}
 
-		// Update the order details
+		// Check if the order is synced with ShipStation
+		if (!order.shipStationOrderId) {
+			return res.status(400).json({ error: "Order is not synced with ShipStation" });
+		}
+
+		// Prepare the payload for ShipStation
+		const shipStationPayload = {
+			orderId: order.shipStationOrderId,
+			carrierCode, // Use carrierCode from the request body
+			shipDate: new Date().toISOString().split("T")[0],
+			trackingNumber,
+			notifyCustomer,
+			notifySalesChannel,
+		};
+
+		// Authenticate with ShipStation
+		const authToken = Buffer.from(
+			`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
+		).toString("base64");
+
+		// Mark the order as shipped in ShipStation
+		let markShippeddata;
+		try {
+			const shipStationResponse = await axios.post(
+				"https://ssapi.shipstation.com/orders/markasshipped",
+				shipStationPayload,
+				{
+					headers: {
+						Authorization: `Basic ${authToken}`,
+						"Content-Type": "application/json",
+					},
+				}
+			);
+
+			console.log("ShipStation response:", shipStationResponse.data);
+			markShippeddata = shipStationResponse.data;
+		} catch (shipStationError) {
+			console.error(
+				"Error marking order as shipped in ShipStation:",
+				shipStationError.response?.data || shipStationError.message
+			);
+			return res.status(500).json({
+				success: false,
+				message: "Failed to mark order as shipped in ShipStation",
+				error: shipStationError.response?.data || shipStationError.message,
+			});
+		}
+
+		// Fetch tracking data from ShipStation
+		let trackingData;
+		try {
+			const trackingResponse = await axios.get(
+				`https://api.shipstation.com/v2/labels/${labelId}/track`,
+				{
+					headers: {
+						'api-key': 'EoEsrnI8TUp1LWkK0LJwZGSgo6LyFi3JLZg4woQ2G6s',
+					}
+				}
+			);
+			trackingData = trackingResponse.data;
+			console.log("Tracking data:", trackingData);
+		} catch (trackingError) {
+			console.error(
+				"Error fetching tracking data from ShipStation:",
+				trackingError.response?.data || trackingError.message
+			);
+			return res.status(500).json({
+				success: false,
+				message: "Failed to fetch tracking data from ShipStation",
+				error: trackingError.response?.data || trackingError.message,
+			});
+		}
+
+		// Update the order status in the database
 		order.trackingNumber = trackingNumber;
 		order.carrierCode = carrierCode;
 		order.labelId = labelId;
 		order.serviceCode = serviceCode;
-		order.status = orderStatus;
+		order.status = "ItemShipped";
 		order.orderStatus = "ItemShipped";
+		order.ItemShippedAt = new Date();
+		order.status_code = trackingData.status_code || "Unknown";
+		order.status_detail_code = trackingData.status_detail_code || "Unknown";
+		order.status_description = trackingData.status_description || "Unknown";
+		order.estimated_delivery_date = trackingData.estimated_delivery_date || null;
+		order.actual_delivery_date = trackingData.actual_delivery_date || null;
+		order.tracking_url = trackingData.tracking_url || null;
+		order.orderNumber = markShippeddata.orderNumber;
+		order.trackingEvents = trackingData.events || [];
 
 		await order.save();
 
 		res.status(200).json({
 			success: true,
-			message: "Order status updated to ItemShipped",
+			message: "Order marked as shipped successfully",
 			order,
 		});
 	} catch (error) {
@@ -918,6 +1232,8 @@ export const updateOrderStatusToShipped = async (req, res) => {
 		res.status(500).json({ error: "Failed to update order status" });
 	}
 };
+
+
 
 export const updateOrderStatusToDelivered = async (req, res) => {
 	const { orderId } = req.params;

@@ -20,7 +20,7 @@ const Charity_model_1 = __importDefault(require("../../models/Charity.model"));
 const cloudinary_1 = __importDefault(require("../../config/cloudinary"));
 // Create a new product
 const createProduct = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const { name, price, charityProfit, category, charity, additionalInfo, subcategory, condition, brand, material, color, size, dimensions, selectedCharityName, selectedCharityId, status, } = req.body;
+    const { name, price, charityProfit, category, charity, additionalInfo, subcategory, condition, brand, material, color, size, weight, dimensions, selectedCharityName, selectedCharityId, status, } = req.body;
     const { userId, role } = req.user;
     try {
         if (!name || !price || !category) {
@@ -87,6 +87,7 @@ const createProduct = (req, res) => __awaiter(void 0, void 0, void 0, function* 
             material,
             color,
             size,
+            weight,
             dimensions: parsedDimensions,
             selectedCharityName,
             selectedCharityId,
@@ -309,13 +310,13 @@ const getRelatedProducts = (req, res) => __awaiter(void 0, void 0, void 0, funct
 exports.getRelatedProducts = getRelatedProducts;
 // Get Product Details (Public Access)
 const getProductDetails = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w;
     const { productId } = req.params;
     try {
         // Fetch product details by ID, including populated fields for seller and charity
         const product = yield Product_model_1.default.findById(productId)
-            .populate("seller", "_id firstName lastName profileImage  addresses")
-            .populate("charity", "charityName charityID storefrontId profileImage  addresses");
+            .populate("seller", "_id firstName lastName charityName email profileImage  addresses")
+            .populate("charity", "charityName email charityID storefrontId profileImage  addresses");
         if (!product) {
             return res.status(404).json({ message: "Product not found." });
         }
@@ -361,11 +362,12 @@ const getProductDetails = (req, res) => __awaiter(void 0, void 0, void 0, functi
                 },
                 sellerType,
                 seller: {
-                    id: (_l = product.seller) === null || _l === void 0 ? void 0 : _l._id,
-                    firstName: (_m = product.seller) === null || _m === void 0 ? void 0 : _m.firstName,
-                    lastName: (_o = product.seller) === null || _o === void 0 ? void 0 : _o.lastName,
-                    profileImage: (_p = product.seller) === null || _p === void 0 ? void 0 : _p.profileImage,
-                    address: (_r = (_q = product.seller) === null || _q === void 0 ? void 0 : _q.addresses) === null || _r === void 0 ? void 0 : _r[0],
+                    id: ((_l = product.seller) === null || _l === void 0 ? void 0 : _l._id) || ((_m = product.charity) === null || _m === void 0 ? void 0 : _m._id),
+                    firstName: (_o = product.seller) === null || _o === void 0 ? void 0 : _o.firstName,
+                    lastName: (_p = product.seller) === null || _p === void 0 ? void 0 : _p.lastName,
+                    charityName: (_q = product.charity) === null || _q === void 0 ? void 0 : _q.charityName,
+                    profileImage: ((_r = product.seller) === null || _r === void 0 ? void 0 : _r.profileImage) || ((_s = product.charity) === null || _s === void 0 ? void 0 : _s.profileImage),
+                    address: ((_u = (_t = product.seller) === null || _t === void 0 ? void 0 : _t.addresses) === null || _u === void 0 ? void 0 : _u[0]) || ((_w = (_v = product.charity) === null || _v === void 0 ? void 0 : _v.addresses) === null || _w === void 0 ? void 0 : _w[0]),
                 },
             },
         });

@@ -1,4 +1,5 @@
 import Notification from "../../models/Notification.model";
+import { io } from "../../server";
 
 // Create a notification (already implemented, just updated argument names for clarity)
 export const createNotification = async (req, res) => {
@@ -20,6 +21,10 @@ export const createNotification = async (req, res) => {
 		});
 
 		await notification.save();
+
+		// Emit event to all connected clients
+		io.emit('new-notification', notification);
+
 		res.status(201).json({ success: true, notification });
 	} catch (error) {
 		console.error("Error creating notification:", error);

@@ -154,51 +154,50 @@ export const toggleFavorite = async (req, res) => {
 
 			const { seller, charity, name, images } = product;
 
-					// Determine sellerType and recipient details
-					let sellerType = null;
-					let recipientId = null;
+			// Determine sellerType and recipient details
+			let sellerType = null;
+			let recipientId = null;
 
-					if (seller) {
-						sellerType = "USER";
-						recipientId = seller._id;
-					} else if (charity) {
-						sellerType = "CHARITY";
-						recipientId = charity._id;
-					}
+			if (seller) {
+				sellerType = "USER";
+				recipientId = seller._id;
+			} else if (charity) {
+				sellerType = "CHARITY";
+				recipientId = charity._id;
+			}
 
-					if (!sellerType || !recipientId) {
-						return res
-							.status(400)
-							.json({ message: "Product seller details are missing." });
-					}
-					// Trigger notification for the seller or charity
-					const notificationPayload = {
-						recipientId,
-						recipientType: sellerType,
-						notificationType: "FAVORITE_MARKED",
-						message:
-							actionType === "MARK"
-								? `Your product "${name}" has been marked as a favourite!`
-								: `Your product "${name}" has been unmarked as a favourite!`,
-						metadata: {
-							productId: itemId,
-							productImage: images?.[0],
-						},
-						isRead: false,
-					};
+			if (!sellerType || !recipientId) {
+				return res.status(400).json({ message: "Product seller details are missing." });
+			}
 
-					console.log("Notification Payload:", notificationPayload);
+			// Trigger notification for the seller or charity
+			notificationPayload = {
+				recipientId,
+				recipientType: sellerType,
+				notificationType: "FAVORITE_MARKED",
+				message:
+					actionType === "MARK"
+						? `Your product "${name}" has been marked as a favourite!`
+						: `Your product "${name}" has been unmarked as a favourite!`,
+				metadata: {
+					productId: itemId,
+					productImage: images?.[0],
+				},
+				isRead: false,
+			};
 
-					await Notification.create(notificationPayload);
+			console.log("Notification Payload for Product:", notificationPayload);
+
 		}
 
 		// Handle `Charity` type
 		if (type === "Charity") {
 			const charity = await Charity.findById(itemId);
-			const { charityName, profileImage, charityBannerImage } = charity;
 			if (!charity) {
 				return res.status(404).json({ message: "Charity not found." });
 			}
+
+			const { charityName, profileImage, charityBannerImage } = charity;
 
 			notificationPayload = {
 				recipientId: charity._id,
@@ -206,16 +205,18 @@ export const toggleFavorite = async (req, res) => {
 				notificationType: "FAVORITE_MARKED",
 				message:
 					actionType === "MARK"
-						? `Your charity storefront "${charity.charityName}" has been marked as a favorite!`
-						: `Your charity storefront "${charity.charityName}" has been unmarked as a favorite!`,
+						? `Your charity storefront "${charityName}" has been marked as a favorite!`
+						: `Your charity storefront "${charityName}" has been unmarked as a favorite!`,
 				metadata: {
 					charityId: itemId,
-					charityName: charityName,
-					profileImage: profileImage,
-					charityBannerImage: charityBannerImage,
+					charityName,
+					profileImage,
+					charityBannerImage,
 				},
 				isRead: false,
 			};
+
+			console.log("Notification Payload for Charity:", notificationPayload);
 		}
 
 		// Create the notification if applicable
@@ -236,6 +237,7 @@ export const toggleFavorite = async (req, res) => {
 		res.status(500).json({ message: "Internal server error", error });
 	}
 };
+
 
 
 

@@ -19,6 +19,7 @@ export const createProduct = async (req, res) => {
 		material,
 		color,
 		size,
+		weight,
 		dimensions,
 		selectedCharityName,
 		selectedCharityId,
@@ -92,6 +93,7 @@ export const createProduct = async (req, res) => {
 			material,
 			color,
 			size,
+			weight,
 			dimensions: parsedDimensions,
 			selectedCharityName,
 			selectedCharityId,
@@ -348,8 +350,8 @@ export const getProductDetails = async (req, res) => {
 	try {
 		// Fetch product details by ID, including populated fields for seller and charity
 		const product = await Product.findById(productId)
-			.populate("seller", "_id firstName lastName profileImage  addresses")
-			.populate("charity", "charityName charityID storefrontId profileImage  addresses");
+			.populate("seller", "_id firstName lastName charityName email profileImage  addresses")
+			.populate("charity", "charityName email charityID storefrontId profileImage  addresses");
 
 		if (!product) {
 			return res.status(404).json({ message: "Product not found." });
@@ -399,11 +401,12 @@ export const getProductDetails = async (req, res) => {
 				},
 				sellerType,
 				seller: {
-					id: product.seller?._id,
+					id: product.seller?._id || product.charity?._id,
 					firstName: product.seller?.firstName,
 					lastName: product.seller?.lastName,
-					profileImage: product.seller?.profileImage,
-					address: product.seller?.addresses?.[0],
+					charityName: product.charity?.charityName,
+					profileImage: product.seller?.profileImage || product.charity?.profileImage,
+					address: product.seller?.addresses?.[0] || product.charity?.addresses?.[0],
 				},
 			},
 		});

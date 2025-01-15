@@ -4,7 +4,10 @@ import {
 	sendMessage,
 	fetchConversation,
 	fetchRecipientMessages,
+	markMessagesAsRead,
 	getUserConversations,
+	getUserDetailsWithRole,
+	fetchUnreadMessagesForRecipient,
 } from "./messages.controller";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 
@@ -24,5 +27,8 @@ router.get(
 );
 
 router.get("/conversations/:userId", getUserConversations);
+router.get("/unread-messages/:userId", fetchUnreadMessagesForRecipient);
+router.get("/user/:userId/:role", authMiddleware(), getUserDetailsWithRole);
 
+router.post("/messages/mark-as-read", markMessagesAsRead);
 export default router;

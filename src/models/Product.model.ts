@@ -18,6 +18,7 @@ export interface IProduct extends Document {
 	brand?: string;
 	material?: string;
 	color?: string;
+	weight?: string;
 	size?: string;
 	dimensions?: {
 		height?: string;
@@ -51,17 +52,18 @@ const productSchema = new Schema<IProduct>(
 		brand: { type: String, required: false },
 		material: { type: String, required: false },
 		color: { type: String, required: false },
+		weight: { type: String, required: false },
 		size: { type: String, required: false },
 		dimensions: {
-      type: {
-        height: { type: String, default: "" },
-        width: { type: String, default: "" },
-        depth: { type: String, default: "" },
-      },
-      default: {},
-    },
-	
-	images: {
+			type: {
+				height: { type: String, default: "" },
+				width: { type: String, default: "" },
+				depth: { type: String, default: "" },
+			},
+			default: {},
+		},
+
+		images: {
 			type: [productImageSchema],
 			validate: [arrayLimit, "Maximum of 10 images are allowed."],
 		},

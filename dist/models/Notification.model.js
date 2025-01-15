@@ -19,6 +19,7 @@ const notificationSchema = new mongoose_1.default.Schema({
         type: String,
         enum: [
             "FAVORITE_MARKED",
+            "NEW_MESSAGE",
             "PRODUCT_PURCHASED",
             "PRODUCT_SHIPPED",
             "PRODUCT_DELIVERED",
