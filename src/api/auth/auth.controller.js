@@ -353,9 +353,10 @@ export const resetPassword = async (req, res) => {
 	}
 };
 
-// Delete Account
 export const deleteAccount = async (req, res) => {
 	const { userId, role } = req.body;
+
+	console.log('Received userId:', userId, 'Received role:', role);
 
 	if (!userId) {
 		return res.status(400).json({ message: "User ID is required" });

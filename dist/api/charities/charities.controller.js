@@ -12,13 +12,20 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.stripeOAuthCallback = exports.generateStripeOAuthUrl = exports.getCharityDetails = exports.getCharityList = exports.getStorefrontData = exports.deletePayment = exports.updatePayment = exports.addPayment = exports.deleteAddress = exports.updateAddress = exports.addAddress = exports.getCharityAdminInfo = exports.updateCharityAdminInfo = exports.getCharityProfile = exports.updateProfile = void 0;
-// import { Request, Response } from "express";
+exports.registerCharity = exports.uploadCharityList = exports.uploadMiddleware = exports.stripeOAuthCallback = exports.generateStripeOAuthUrl = exports.getCharityDetails = exports.getCharityList = exports.getStorefrontData = exports.deletePayment = exports.updatePayment = exports.addPayment = exports.deleteAddress = exports.updateAddress = exports.addAddress = exports.getCharityAdminInfo = exports.updateCharityAdminInfo = exports.getCharityProfile = exports.updateProfile = void 0;
+const multer_1 = __importDefault(require("multer"));
+const xlsx_1 = __importDefault(require("xlsx"));
 const cloudinary_1 = __importDefault(require("../../config/cloudinary"));
 const Charity_model_1 = __importDefault(require("../../models/Charity.model"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const stripe_1 = __importDefault(require("stripe"));
+const uuid_1 = require("uuid");
 const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });
+// Set up Multer for file uploads
+const upload = (0, multer_1.default)({
+    storage: multer_1.default.memoryStorage(), // Store file in memory for processing
+    limits: { fileSize: 50 * 1024 * 1024 }, // Limit file size to 10MB
+});
 // Update profile function
 const updateProfile = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -311,14 +318,41 @@ const getStorefrontData = (req, res) => __awaiter(void 0, void 0, void 0, functi
     }
 });
 exports.getStorefrontData = getStorefrontData;
+// Get Charities with Pagination and Search
 const getCharityList = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const charities = yield Charity_model_1.default.find(); // You can add filters as needed (e.g., status: 'approved')
-        res.status(200).json({ charities });
+        const { page = 1, limit = 12, search = '' } = req.query; // Get page, limit, and search term from query params
+        // Convert page and limit to integers
+        const pageNumber = parseInt(page);
+        const pageLimit = parseInt(limit);
+        // Calculate the skip value for pagination
+        const skip = (pageNumber - 1) * pageLimit;
+        // Build search filter
+        const searchQuery = search
+            ? {
+                charityName: { $regex: search, $options: 'i' }, // Case insensitive search on charityName
+            }
+            : {};
+        // Fetch the charities with pagination and search filter
+        const charities = yield Charity_model_1.default.find(searchQuery)
+            .skip(skip) // Skip the number of documents based on page and limit
+            .limit(pageLimit) // Limit the number of results per page
+            .select('charityName charityNumber description phoneNumber websiteLink profileImage charityBannerImage')
+            .lean(); // Use lean for better performance
+        // Get the total number of charities to calculate the total pages
+        const totalCharities = yield Charity_model_1.default.countDocuments(searchQuery);
+        // Calculate total pages
+        const totalPages = Math.ceil(totalCharities / pageLimit);
+        res.status(200).json({
+            charities,
+            totalPages,
+            currentPage: pageNumber,
+            totalCharities,
+        });
     }
     catch (error) {
-        console.error("Error fetching charities:", error);
-        res.status(500).json({ message: "Error fetching charities" });
+        console.error('Error fetching charities:', error);
+        res.status(500).json({ message: 'Internal server error' });
     }
 });
 exports.getCharityList = getCharityList;
@@ -345,7 +379,8 @@ const getCharityDetails = (req, res) => __awaiter(void 0, void 0, void 0, functi
 exports.getCharityDetails = getCharityDetails;
 // Endpoint to generate Stripe Connect OAuth URL
 const generateStripeOAuthUrl = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    const redirectUri = `${process.env.FRONTEND_BASE_URL}/`; // URL to redirect after Stripe authentication
+    // const redirectUri = `${process.env.FRONTEND_BASE_URL}/`; // URL to redirect after Stripe authentication
+    const redirectUri = 'http://localhost:3000/stripe/callback';
     try {
         // Generate the Stripe Connect OAuth URL
         const oauthUrl = stripe.oauth.authorizeUrl({
@@ -363,63 +398,139 @@ const generateStripeOAuthUrl = (_req, res) => __awaiter(void 0, void 0, void 0, 
 });
 exports.generateStripeOAuthUrl = generateStripeOAuthUrl;
 // Handle the Stripe OAuth callback
-// Handle the Stripe OAuth callback
 const stripeOAuthCallback = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
-    const { code } = req.query; // Authorization code sent by Stripe
-    // Validate the code
+    const { code } = req.query;
+    const { userId, role } = req.user;
+    console.log("req.user:", req.user);
+    console.log("Stripe OAuth Token Response:", response);
+    console.log("Saving Stripe account ID for charity:", charity);
     if (!code) {
-        return res.status(400).json({ message: 'Authorization code not found.' });
+        return res.status(400).json({ message: "Authorization code not found." });
     }
     try {
         // Exchange the authorization code for an access token
         const response = yield stripe.oauth.token({
-            grant_type: 'authorization_code',
-            code: code,
+            grant_type: "authorization_code",
+            code: req.query.code,
         });
-        // Destructure response data
-        const stripeAccountId = response.stripe_user_id; // Stripe account ID
-        const stripeEmail = response.email; // Email from Stripe response (if available)
-        // Log Stripe response for debugging
-        console.log('Stripe OAuth Token Response:', response);
-        let charity = null;
-        if (stripeEmail) {
-            // Try to find the charity by email
-            charity = yield Charity_model_1.default.findOne({ email: stripeEmail });
-            if (!charity)
-                console.log(`No charity found with email: ${stripeEmail}`);
+        const stripeAccountId = response.stripe_user_id; // Extract Stripe account ID
+        console.log('Connected account ID:', stripeAccountId);
+        // Ensure the user is a charity
+        if (role !== "Charity") {
+            return res.status(403).json({ message: "Unauthorized. Only charities can connect a Stripe account." });
         }
-        else {
-            // Fallback to userId if email is not available
-            const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.userId;
-            console.log(`User ID from request: ${userId}`);
-            if (userId) {
-                charity = yield Charity_model_1.default.findById(userId);
-                if (!charity)
-                    console.log(`No charity found with user ID: ${userId}`);
-            }
-        }
+        // Find the charity by userId
+        const charity = yield Charity_model_1.default.findById(userId);
         if (!charity) {
-            return res.status(404).json({ message: 'Charity not found. Ensure the charity exists in the database.' });
+            return res.status(404).json({ message: "Charity not found." });
         }
-        // Save the Stripe account ID to the charity's record
+        // Save the Stripe account ID
         charity.stripeAccountId = stripeAccountId;
         yield charity.save();
-        // Log success for debugging
         console.log(`Stripe account connected successfully for charity: ${charity._id}`);
-        // Redirect to success page or return response
+        // Return success response
         return res.status(200).json({
-            message: 'Stripe account connected successfully',
+            message: "Stripe account connected successfully",
             stripeAccountId,
         });
     }
     catch (error) {
-        console.error('Stripe OAuth error:', error);
-        // Handle Stripe-specific errors
-        if (error.type === 'StripeInvalidGrantError') {
-            return res.status(400).json({ message: 'Invalid authorization code' });
+        console.error("Stripe OAuth error:", error);
+        if (error.type === "StripeInvalidGrantError") {
+            return res.status(400).json({ message: "Invalid authorization code." });
         }
-        return res.status(500).json({ message: 'Error connecting Stripe account', error: error.message });
+        return res.status(500).json({ message: "Error connecting Stripe account.", error: error.message });
     }
 });
 exports.stripeOAuthCallback = stripeOAuthCallback;
+// Middleware to handle file upload
+exports.uploadMiddleware = upload.single("file");
+const uploadCharityList = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        // Ensure a file was uploaded
+        if (!req.file) {
+            return res.status(400).json({ message: "No file uploaded." });
+        }
+        // Parse the uploaded file using xlsx
+        const workbook = xlsx_1.default.read(req.file.buffer, { type: "buffer" });
+        const sheetName = workbook.SheetNames[0]; // Get the first sheet
+        const sheetData = xlsx_1.default.utils.sheet_to_json(workbook.Sheets[sheetName]);
+        if (!sheetData || sheetData.length === 0) {
+            return res.status(400).json({ message: "Excel file is empty or invalid." });
+        }
+        // Log parsed data for debugging
+        console.log("Parsed Excel data:", sheetData);
+        // Map each row to the Charity schema
+        const charities = sheetData.map((row, index) => {
+            // Ensure a unique storefrontId is assigned to each charity
+            const storefrontId = (0, uuid_1.v4)(); // Generate unique storefrontId
+            // Validate and process the data, assigning default values where needed
+            return {
+                charityName: row.charityName || `Unnamed Charity ${index + 1}`,
+                charityNumber: row.charityNumber || `charity number ${index + 1}`,
+                phoneNumber: row.phoneNumber || `phone number ${index + 1}`,
+                email: row.email || `placeholder${index + 1}@example.com`,
+                websiteLink: row.websiteLink || `website link ${index + 1}`,
+                description: row.description || `No description provided ${index + 1}`,
+                firstName: row.firstName || `first name ${index + 1}`,
+                lastName: row.lastName || `last name ${index + 1}`,
+                userName: row.userName || `username ${index + 1}`,
+                password: row.password || `password ${index + 1}`,
+                // Add the addresses field as an array with the correct structure
+                addresses: [
+                    {
+                        type: 'main address',
+                        name: row.firstName || `first name ${index + 1}`, // Using first name as an example
+                        address: row.address || `Address ${index + 1}`, // Assuming address exists in the sheet
+                        city: row.city || `City ${index + 1}`, // Assuming city exists in the sheet
+                        country: row.country || 'GB', // Defaulting to GB
+                        postcode: row.postcode || `Postcode ${index + 1}`, // Assuming postcode exists in the sheet
+                    }
+                ],
+                role: "CHARITY",
+                profileCompleted: false,
+                verified: false,
+                registrationStatus: "PENDING",
+                storefrontId,
+            };
+        });
+        // Log the charities data to ensure proper mapping
+        console.log("Charities to be saved:", charities);
+        // Insert charities into MongoDB
+        const createdCharities = yield Charity_model_1.default.insertMany(charities);
+        // Respond with success message
+        res.status(201).json({
+            message: "Charities uploaded successfully.",
+            charities: createdCharities,
+        });
+    }
+    catch (error) {
+        // Log any error and respond with failure message
+        console.error("Error uploading charities:", error);
+        res.status(500).json({ message: "Failed to upload charities.", error });
+    }
+});
+exports.uploadCharityList = uploadCharityList;
+// Register charity with password
+const registerCharity = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { storefrontId, password } = req.body;
+        // Find the charity using the storefrontId
+        const charity = yield Charity_model_1.default.findOne({ storefrontId });
+        if (!charity) {
+            return res.status(404).json({ message: 'Charity not found' });
+        }
+        // Encrypt the password before saving it
+        const hashedPassword = yield bcryptjs_1.default.hash(password, 10);
+        // Update the charity record with the new password and set registration status to "REGISTERED"
+        charity.password = hashedPassword;
+        charity.registrationStatus = 'REGISTERED';
+        yield charity.save();
+        res.status(200).json({ message: 'Registration successful!' });
+    }
+    catch (error) {
+        console.error('Error registering charity:', error);
+        res.status(500).json({ message: 'Registration failed', error: error.message });
+    }
+});
+exports.registerCharity = registerCharity;

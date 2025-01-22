@@ -27,7 +27,7 @@ export const createNotification = async (req, res) => {
 
 		res.status(201).json({ success: true, notification });
 	} catch (error) {
-		console.error("Error creating notification:", error);
+		// console.error("Error creating notification:", error);
 		res.status(500).json({ error: "Failed to create notification" });
 	}
 };
@@ -52,7 +52,7 @@ export const getCurrentUserNotifications = async (req, res) => {
 
 		res.status(200).json({ success: true, notifications });
 	} catch (error) {
-		console.error("Error fetching notifications:", error);
+		// console.error("Error fetching notifications:", error);
 		res.status(500).json({ error: "Failed to fetch notifications" });
 	}
 };

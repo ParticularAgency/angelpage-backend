@@ -37,7 +37,7 @@ const createNotification = (req, res) => __awaiter(void 0, void 0, void 0, funct
         res.status(201).json({ success: true, notification });
     }
     catch (error) {
-        console.error("Error creating notification:", error);
+        // console.error("Error creating notification:", error);
         res.status(500).json({ error: "Failed to create notification" });
     }
 });
@@ -60,7 +60,7 @@ const getCurrentUserNotifications = (req, res) => __awaiter(void 0, void 0, void
         res.status(200).json({ success: true, notifications });
     }
     catch (error) {
-        console.error("Error fetching notifications:", error);
+        // console.error("Error fetching notifications:", error);
         res.status(500).json({ error: "Failed to fetch notifications" });
     }
 });

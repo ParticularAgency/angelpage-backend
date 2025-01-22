@@ -3,8 +3,8 @@ import { Buffer } from "buffer";
 import Order from "../../models/Order.model";
 import Cart from "../../models/Cart.model";
 // import { shipStationClient } from "../../utils/shipstation";
-import { startOfWeek, subWeeks, startOfMonth, subMonths, startOfYear, subYears } from "date-fns";
-
+// import { startOfWeek, subWeeks, startOfMonth, subMonths, startOfYear, subYears } from "date-fns";
+import { startOfWeek, subWeeks, startOfMonth, subMonths, subYears, startOfYear, endOfWeek, endOfMonth, endOfYear } from 'date-fns';
 
 import Stripe from 'stripe';
 
@@ -364,7 +364,7 @@ export const createLabelForOrder = async (req, res) => {
 		// const authToken = Buffer.from(
 		// 	`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
 		// ).toString("base64");
-		// console.log(authToken);
+		console.log(authToken);
 		const labelPayload = {
 			shipment: {
 			orderId: order.shipStationOrderId,
@@ -670,6 +670,9 @@ export const getSoldItems = async (req, res) => {
 		const prevMonthStart = subMonths(monthStart, 1);
 		const yearStart = startOfYear(now);
 		const prevYearStart = subYears(yearStart, 1);
+		const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+		const currentMonthStart = startOfMonth(now);
+		const currentYearStart = startOfYear(now);
 
 		// Fetch orders for the given seller
 		const orders = await Order.find({
@@ -777,6 +780,58 @@ export const getSoldItems = async (req, res) => {
 			},
 		};
 
+
+		// Helper function to group data by a specific period
+		const groupData = (orders, start, end, periodLabel) => {
+			const filteredOrders = orders.filter(
+				order => order.createdAt >= start && order.createdAt <= end
+			);
+
+			let totalSold = 0;
+			let totalRevenue = 0;
+
+			filteredOrders.forEach(order => {
+				order.products.forEach(product => {
+					if (product.seller?.toString() === sellerId) {
+						totalSold += product.quantity;
+						totalRevenue += product.totalProductCost;
+					}
+				});
+			});
+
+			return { revenue: totalRevenue, orders: totalSold, label: periodLabel };
+		};
+
+		// Weekly data
+		const weeklyData = [];
+		for (let i = 4; i >= 0; i--) {
+			const weekStart = subWeeks(currentWeekStart, i);
+			const weekEnd = endOfWeek(weekStart);
+			weeklyData.push(groupData(orders, weekStart, weekEnd, `Week ${5 - i}`));
+		}
+
+		// Monthly data
+		const monthlyData = [];
+		for (let i = 0; i < 12; i++) {
+			const monthStart = startOfMonth(subMonths(currentMonthStart, i));
+			const monthEnd = endOfMonth(monthStart);
+			monthlyData.unshift(
+				groupData(orders, monthStart, monthEnd, monthStart.toLocaleString("default", { month: "long" }))
+			);
+		}
+
+		// Yearly data
+		const yearlyData = [];
+		for (let i = 0; i < 5; i++) {
+			const yearStart = startOfYear(subYears(currentYearStart, i));
+			const yearEnd = endOfYear(yearStart);
+			yearlyData.unshift(
+				groupData(orders, yearStart, yearEnd, yearStart.getFullYear().toString())
+			);
+		}
+
+	
+
 		// Prepare the response data
 		const responseData = {
 			success: true,
@@ -785,9 +840,12 @@ export const getSoldItems = async (req, res) => {
 			totalRevenue: currentMonthStats.totalRevenue,
 			changes: statsChanges,
 			soldItems,
+			weeklyData,
+			monthlyData,
+			yearlyData,
 		};
 
-		res.status(200).json(responseData);
+		res.status(200).json(responseData, );
 	} catch (error) {
 		console.error("Error fetching sold items:", error);
 		res.status(500).json({ error: "Failed to fetch sold items" });
@@ -944,10 +1002,14 @@ export const getPurchaseItems = async (req, res) => {
 
 
 // Get total sold items and revenue
-export const getTotalSoldItems = async (_req, res) => {
+export const getTotalSoldItems = async (req, res) => {
 	const { sellerId } = req.params;
 
 	try {
+		const now = new Date();
+		const currentWeekStart = startOfWeek(now, { weekStartsOn: 1 });
+		const currentMonthStart = startOfMonth(now);
+		const currentYearStart = startOfYear(now);
 		// Find all orders containing products sold by the given seller
 		const orders = await Order.find({
 			"products.seller": sellerId,
@@ -992,12 +1054,72 @@ export const getTotalSoldItems = async (_req, res) => {
 				items: [], // List of sold products
 			},
 		);
+		// Helper function to group data by a specific period
+		const groupData = (orders, start, end, periodLabel) => {
+			const filteredOrders = orders.filter(
+				order => order.createdAt >= start && order.createdAt <= end
+			);
 
+			let totalSold = 0;
+			let totalRevenue = 0;
+
+			filteredOrders.forEach(order => {
+				order.products.forEach(product => {
+					if (product.seller?.toString() === sellerId) {
+						totalSold += product.quantity;
+						totalRevenue += product.totalProductCost;
+					}
+				});
+			});
+
+			return { revenue: totalRevenue, orders: totalSold, label: periodLabel };
+		};
+
+		// Weekly data
+		const weeklyData = [];
+		for (let i = 4; i >= 0; i--) {
+			const weekStart = subWeeks(currentWeekStart, i);
+			const weekEnd = endOfWeek(weekStart);
+			weeklyData.push(groupData(orders, weekStart, weekEnd, `Week ${5 - i}`));
+		}
+
+		// Monthly data
+		const monthlyData = [];
+		for (let i = 0; i < 12; i++) {
+			const monthStart = startOfMonth(subMonths(currentMonthStart, i));
+			const monthEnd = endOfMonth(monthStart);
+			monthlyData.unshift(
+				groupData(orders, monthStart, monthEnd, monthStart.toLocaleString("default", { month: "long" }))
+			);
+		}
+
+		// Yearly data
+		const yearlyData = [];
+		for (let i = 0; i < 5; i++) {
+			const yearStart = startOfYear(subYears(currentYearStart, i));
+			const yearEnd = endOfYear(yearStart);
+			yearlyData.unshift(
+				groupData(orders, yearStart, yearEnd, yearStart.getFullYear().toString())
+			);
+		}
+
+		// Response data structure
+		const responseData = {
+			weeklyData,
+			monthlyData,
+			yearlyData,
+		};
+
+		// res.status(200).json({
+		// 	success: true,
+		// 	data: responseData,
+		// });
 		res.status(200).json({
 			success: true,
 			totalQuantity: totalDetails.totalQuantity,
 			totalRevenue: totalDetails.totalRevenue,
 			items: totalDetails.items,
+			data: responseData,
 		});
 	} catch (error) {
 		console.error("Error fetching total sold items:", error);

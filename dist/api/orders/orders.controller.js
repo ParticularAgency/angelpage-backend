@@ -18,6 +18,7 @@ const buffer_1 = require("buffer");
 const Order_model_1 = __importDefault(require("../../models/Order.model"));
 const Cart_model_1 = __importDefault(require("../../models/Cart.model"));
 // import { shipStationClient } from "../../utils/shipstation";
+// import { startOfWeek, subWeeks, startOfMonth, subMonths, startOfYear, subYears } from "date-fns";
 const date_fns_1 = require("date-fns");
 const stripe_1 = __importDefault(require("stripe"));
 const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });
@@ -298,7 +299,7 @@ const createLabelForOrder = (req, res) => __awaiter(void 0, void 0, void 0, func
         // const authToken = Buffer.from(
         // 	`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
         // ).toString("base64");
-        // console.log(authToken);
+        console.log(authToken);
         const labelPayload = {
             shipment: {
                 orderId: order.shipStationOrderId,
@@ -553,6 +554,9 @@ const getSoldItems = (req, res) => __awaiter(void 0, void 0, void 0, function* (
         const prevMonthStart = (0, date_fns_1.subMonths)(monthStart, 1);
         const yearStart = (0, date_fns_1.startOfYear)(now);
         const prevYearStart = (0, date_fns_1.subYears)(yearStart, 1);
+        const currentWeekStart = (0, date_fns_1.startOfWeek)(now, { weekStartsOn: 1 });
+        const currentMonthStart = (0, date_fns_1.startOfMonth)(now);
+        const currentYearStart = (0, date_fns_1.startOfYear)(now);
         // Fetch orders for the given seller
         const orders = yield Order_model_1.default.find({
             "products.seller": sellerId,
@@ -651,6 +655,43 @@ const getSoldItems = (req, res) => __awaiter(void 0, void 0, void 0, function* (
                 revenueChange: calculatePercentageChange(currentYearStats.totalRevenue, previousYearStats.totalRevenue),
             },
         };
+        // Helper function to group data by a specific period
+        const groupData = (orders, start, end, periodLabel) => {
+            const filteredOrders = orders.filter(order => order.createdAt >= start && order.createdAt <= end);
+            let totalSold = 0;
+            let totalRevenue = 0;
+            filteredOrders.forEach(order => {
+                order.products.forEach(product => {
+                    var _a;
+                    if (((_a = product.seller) === null || _a === void 0 ? void 0 : _a.toString()) === sellerId) {
+                        totalSold += product.quantity;
+                        totalRevenue += product.totalProductCost;
+                    }
+                });
+            });
+            return { revenue: totalRevenue, orders: totalSold, label: periodLabel };
+        };
+        // Weekly data
+        const weeklyData = [];
+        for (let i = 4; i >= 0; i--) {
+            const weekStart = (0, date_fns_1.subWeeks)(currentWeekStart, i);
+            const weekEnd = (0, date_fns_1.endOfWeek)(weekStart);
+            weeklyData.push(groupData(orders, weekStart, weekEnd, `Week ${5 - i}`));
+        }
+        // Monthly data
+        const monthlyData = [];
+        for (let i = 0; i < 12; i++) {
+            const monthStart = (0, date_fns_1.startOfMonth)((0, date_fns_1.subMonths)(currentMonthStart, i));
+            const monthEnd = (0, date_fns_1.endOfMonth)(monthStart);
+            monthlyData.unshift(groupData(orders, monthStart, monthEnd, monthStart.toLocaleString("default", { month: "long" })));
+        }
+        // Yearly data
+        const yearlyData = [];
+        for (let i = 0; i < 5; i++) {
+            const yearStart = (0, date_fns_1.startOfYear)((0, date_fns_1.subYears)(currentYearStart, i));
+            const yearEnd = (0, date_fns_1.endOfYear)(yearStart);
+            yearlyData.unshift(groupData(orders, yearStart, yearEnd, yearStart.getFullYear().toString()));
+        }
         // Prepare the response data
         const responseData = {
             success: true,
@@ -659,6 +700,9 @@ const getSoldItems = (req, res) => __awaiter(void 0, void 0, void 0, function* (
             totalRevenue: currentMonthStats.totalRevenue,
             changes: statsChanges,
             soldItems,
+            weeklyData,
+            monthlyData,
+            yearlyData,
         };
         res.status(200).json(responseData);
     }
@@ -805,9 +849,13 @@ const getPurchaseItems = (req, res) => __awaiter(void 0, void 0, void 0, functio
 });
 exports.getPurchaseItems = getPurchaseItems;
 // Get total sold items and revenue
-const getTotalSoldItems = (_req, res) => __awaiter(void 0, void 0, void 0, function* () {
+const getTotalSoldItems = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { sellerId } = req.params;
     try {
+        const now = new Date();
+        const currentWeekStart = (0, date_fns_1.startOfWeek)(now, { weekStartsOn: 1 });
+        const currentMonthStart = (0, date_fns_1.startOfMonth)(now);
+        const currentYearStart = (0, date_fns_1.startOfYear)(now);
         // Find all orders containing products sold by the given seller
         const orders = yield Order_model_1.default.find({
             "products.seller": sellerId,
@@ -845,11 +893,59 @@ const getTotalSoldItems = (_req, res) => __awaiter(void 0, void 0, void 0, funct
             totalRevenue: 0, // Total revenue generated
             items: [], // List of sold products
         });
+        // Helper function to group data by a specific period
+        const groupData = (orders, start, end, periodLabel) => {
+            const filteredOrders = orders.filter(order => order.createdAt >= start && order.createdAt <= end);
+            let totalSold = 0;
+            let totalRevenue = 0;
+            filteredOrders.forEach(order => {
+                order.products.forEach(product => {
+                    var _a;
+                    if (((_a = product.seller) === null || _a === void 0 ? void 0 : _a.toString()) === sellerId) {
+                        totalSold += product.quantity;
+                        totalRevenue += product.totalProductCost;
+                    }
+                });
+            });
+            return { revenue: totalRevenue, orders: totalSold, label: periodLabel };
+        };
+        // Weekly data
+        const weeklyData = [];
+        for (let i = 4; i >= 0; i--) {
+            const weekStart = (0, date_fns_1.subWeeks)(currentWeekStart, i);
+            const weekEnd = (0, date_fns_1.endOfWeek)(weekStart);
+            weeklyData.push(groupData(orders, weekStart, weekEnd, `Week ${5 - i}`));
+        }
+        // Monthly data
+        const monthlyData = [];
+        for (let i = 0; i < 12; i++) {
+            const monthStart = (0, date_fns_1.startOfMonth)((0, date_fns_1.subMonths)(currentMonthStart, i));
+            const monthEnd = (0, date_fns_1.endOfMonth)(monthStart);
+            monthlyData.unshift(groupData(orders, monthStart, monthEnd, monthStart.toLocaleString("default", { month: "long" })));
+        }
+        // Yearly data
+        const yearlyData = [];
+        for (let i = 0; i < 5; i++) {
+            const yearStart = (0, date_fns_1.startOfYear)((0, date_fns_1.subYears)(currentYearStart, i));
+            const yearEnd = (0, date_fns_1.endOfYear)(yearStart);
+            yearlyData.unshift(groupData(orders, yearStart, yearEnd, yearStart.getFullYear().toString()));
+        }
+        // Response data structure
+        const responseData = {
+            weeklyData,
+            monthlyData,
+            yearlyData,
+        };
+        // res.status(200).json({
+        // 	success: true,
+        // 	data: responseData,
+        // });
         res.status(200).json({
             success: true,
             totalQuantity: totalDetails.totalQuantity,
             totalRevenue: totalDetails.totalRevenue,
             items: totalDetails.items,
+            data: responseData,
         });
     }
     catch (error) {

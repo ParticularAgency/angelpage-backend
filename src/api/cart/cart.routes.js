@@ -11,7 +11,7 @@ import { authMiddleware } from "../../middlewares/auth.middleware";
 const router = Router();
 
 // Add product to cart
-router.post("/add-product-to-cart", authMiddleware(), addProductOnCart);
+router.post("/add-product-to-cart",  addProductOnCart);
 
 // Get all products in the cart for a user
 router.get("/:userId", authMiddleware(), getProductOnCart);

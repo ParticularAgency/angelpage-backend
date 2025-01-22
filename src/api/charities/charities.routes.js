@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { authMiddleware } from "../../middlewares/auth.middleware";
+
 import {
 	updateProfile,
 	getCharityProfile,
@@ -15,7 +16,9 @@ import {
 	getCharityList,
 	getCharityDetails,
 	generateStripeOAuthUrl,
-	stripeOAuthCallback,
+	stripeOAuthCallback, 
+	uploadMiddleware, 
+	uploadCharityList
 } from "./charities.controller";
 
 const router = Router();
@@ -58,8 +61,9 @@ router.get("/charities", getCharityList);
 
 router.get("/charities/:charityid", getCharityDetails);
 
-router.post("/stripe/connect-url", generateStripeOAuthUrl);
+router.post("/stripe/connect-url", authMiddleware(), generateStripeOAuthUrl);
 
-router.get('/stripe/connect/callback', stripeOAuthCallback);
+router.get('/stripe/connect/callback', authMiddleware(), stripeOAuthCallback);
+router.post("/upload-charities", uploadMiddleware, uploadCharityList);
 
 export default router;

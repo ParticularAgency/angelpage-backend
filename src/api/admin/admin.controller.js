@@ -360,21 +360,58 @@ export const getLiveProducts = async (
 
 
 
-export const getTotalPlatformUsersWithDuration = async (
-	req,
-	res
-) => {
+// Backend API: Get Users with Pagination, Search, and Duration Calculation
+export const getTotalPlatformUsersWithDuration = async (req, res) => {
 	try {
-		const users = await User.find({ role: "USER" });
-		const charities = await Charity.find({ role: "CHARITY" });
+		const { page = 1, limit = 10, searchTerm = '', statusFilter = 'all', sessionFilter = 'all' } = req.query;
 
+		const skip = (page - 1) * limit;
+
+		let query = { role: { $in: ['USER', 'CHARITY'] } };
+
+		// Filter by role (USER or CHARITY)
+		if (statusFilter !== 'all') {
+			query.role = statusFilter;
+		}
+
+		// Filter by session duration (e.g., "last7days", "1month", "all")
+		if (sessionFilter === 'last7days') {
+			const sevenDaysAgo = new Date();
+			sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+			query.createdAt = { $gte: sevenDaysAgo };
+		} else if (sessionFilter === '1month') {
+			const oneMonthAgo = new Date();
+			oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+			query.createdAt = { $gte: oneMonthAgo };
+		}
+
+		// If search term is provided, filter by user/charity name, email, or userId
+		if (searchTerm) {
+			const lowerSearchTerm = searchTerm.toLowerCase();
+			query.$or = [
+				{ 'firstName': { $regex: lowerSearchTerm, $options: 'i' } },
+				{ 'lastName': { $regex: lowerSearchTerm, $options: 'i' } },
+				{ 'email': { $regex: lowerSearchTerm, $options: 'i' } },
+				{ 'userId': { $regex: lowerSearchTerm, $options: 'i' } },
+				{ 'charityName': { $regex: lowerSearchTerm, $options: 'i' } },
+			];
+		}
+
+		// Fetch users and charities with pagination and filters, combined limit
+		const usersPromise = User.find(query).skip(skip).limit(limit);
+		const charitiesPromise = Charity.find(query).skip(skip).limit(limit);
+
+		// Wait for both users and charities
+		const [users, charities] = await Promise.all([usersPromise, charitiesPromise]);
+
+		// Combine users and charities, and limit to `limit` records
 		const formattedUsers = users.map(user => ({
 			id: user._id,
 			name: `${user.firstName} ${user.lastName}`,
 			email: user.email,
 			profileImage: user.profileImage,
 			duration: calculateDuration(user.createdAt),
-			role: "USER",
+			role: 'USER',
 			userId: user.userId,
 		}));
 
@@ -384,12 +421,27 @@ export const getTotalPlatformUsersWithDuration = async (
 			email: charity.email,
 			profileImage: charity.profileImage,
 			duration: calculateDuration(charity.createdAt),
-			role: "CHARITY",
+			role: 'CHARITY',
 			charityId: charity.charityID,
 		}));
 
+		// Combine users and charities into a single array
+		const combinedResults = [...formattedUsers, ...formattedCharities];
+
+		// Limit the total results to `limit` (10 items per page)
+		const limitedResults = combinedResults.slice(0, limit);
+
+		// Get total counts for users and charities
+		const totalUsers = await User.countDocuments(query);
+		const totalCharities = await Charity.countDocuments(query);
+		const totalRecords = totalUsers + totalCharities;
+		const totalPages = Math.ceil(totalRecords / limit);
+
 		res.status(200).json({
-			users: [...formattedUsers, ...formattedCharities],
+			users: limitedResults,
+			totalPages,
+			currentPage: page,
+			totalRecords,
 		});
 	} catch (error) {
 		console.error("Error fetching users:", error);
@@ -409,6 +461,7 @@ const calculateDuration = (createdAt) => {
 	return `${Math.floor(days / 30)} months ago`;
 };
 
+// Delete user or charity by ID
 export const deleteUser = async (req, res) => {
 	try {
 		const { userId } = req.params;
@@ -435,6 +488,7 @@ export const deleteUser = async (req, res) => {
 		res.status(500).json({ message: "Failed to delete user" });
 	}
 };
+
 
 export const getTotalPlatformUsersWithMonthlyChanges = async (_req, res) => {
 	try {

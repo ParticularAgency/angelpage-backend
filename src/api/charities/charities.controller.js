@@ -1,10 +1,17 @@
-// import { Request, Response } from "express";
+
+import multer from "multer";
+import xlsx from "xlsx";
 import cloudinary from "../../config/cloudinary";
 import Charity from "../../models/Charity.model";
 import bcrypt from "bcryptjs";
 import Stripe from 'stripe';
+import { v4 as uuidv4 } from 'uuid';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });
-
+// Set up Multer for file uploads
+const upload = multer({
+	storage: multer.memoryStorage(), // Store file in memory for processing
+	limits: { fileSize: 50 * 1024 * 1024 }, // Limit file size to 10MB
+});
 // Update profile function
 export const updateProfile = async (req, res) => {
 	try {
@@ -331,14 +338,47 @@ export const getStorefrontData = async (req, res) => {
 	}
 };
 
-
+// Get Charities with Pagination and Search
 export const getCharityList = async (req, res) => {
 	try {
-		const charities = await Charity.find(); // You can add filters as needed (e.g., status: 'approved')
-		res.status(200).json({ charities });
+		const { page = 1, limit = 12, search = '' } = req.query; // Get page, limit, and search term from query params
+
+		// Convert page and limit to integers
+		const pageNumber = parseInt(page);
+		const pageLimit = parseInt(limit);
+
+		// Calculate the skip value for pagination
+		const skip = (pageNumber - 1) * pageLimit;
+
+		// Build search filter
+		const searchQuery = search
+			? {
+				charityName: { $regex: search, $options: 'i' }, // Case insensitive search on charityName
+			}
+			: {};
+
+		// Fetch the charities with pagination and search filter
+		const charities = await Charity.find(searchQuery)
+			.skip(skip) // Skip the number of documents based on page and limit
+			.limit(pageLimit) // Limit the number of results per page
+			.select('charityName charityNumber description phoneNumber websiteLink profileImage charityBannerImage')
+			.lean(); // Use lean for better performance
+
+		// Get the total number of charities to calculate the total pages
+		const totalCharities = await Charity.countDocuments(searchQuery);
+
+		// Calculate total pages
+		const totalPages = Math.ceil(totalCharities / pageLimit);
+
+		res.status(200).json({
+			charities,
+			totalPages,
+			currentPage: pageNumber,
+			totalCharities,
+		});
 	} catch (error) {
-		console.error("Error fetching charities:", error);
-		res.status(500).json({ message: "Error fetching charities" });
+		console.error('Error fetching charities:', error);
+		res.status(500).json({ message: 'Internal server error' });
 	}
 };
 
@@ -369,7 +409,8 @@ export const getCharityDetails = async (req, res) => {
 
 // Endpoint to generate Stripe Connect OAuth URL
 export const generateStripeOAuthUrl = async (_req, res) => {
-	const redirectUri = `${process.env.FRONTEND_BASE_URL}/`; // URL to redirect after Stripe authentication
+	// const redirectUri = `${process.env.FRONTEND_BASE_URL}/`; // URL to redirect after Stripe authentication
+	const redirectUri = 'http://localhost:3000/stripe/callback';
 
 	try {
 		// Generate the Stripe Connect OAuth URL
@@ -387,70 +428,161 @@ export const generateStripeOAuthUrl = async (_req, res) => {
 	}
 };
 
-// Handle the Stripe OAuth callback
+
 // Handle the Stripe OAuth callback
 export const stripeOAuthCallback = async (req, res) => {
-	const { code } = req.query; // Authorization code sent by Stripe
+	const { code } = req.query;
+	const { userId, role } = req.user;
+	console.log("req.user:", req.user);
+	console.log("Stripe OAuth Token Response:", response);
+	console.log("Saving Stripe account ID for charity:", charity);
 
-	// Validate the code
 	if (!code) {
-		return res.status(400).json({ message: 'Authorization code not found.' });
+		return res.status(400).json({ message: "Authorization code not found." });
 	}
 
 	try {
 		// Exchange the authorization code for an access token
 		const response = await stripe.oauth.token({
-			grant_type: 'authorization_code',
-			code: code,
+			grant_type: "authorization_code",
+			code: req.query.code,
 		});
 
-		// Destructure response data
-		const stripeAccountId = response.stripe_user_id; // Stripe account ID
-		const stripeEmail = response.email; // Email from Stripe response (if available)
+		const stripeAccountId = response.stripe_user_id; // Extract Stripe account ID
+		console.log('Connected account ID:', stripeAccountId);
 
-		// Log Stripe response for debugging
-		console.log('Stripe OAuth Token Response:', response);
-
-		let charity = null;
-
-		if (stripeEmail) {
-			// Try to find the charity by email
-			charity = await Charity.findOne({ email: stripeEmail });
-			if (!charity) console.log(`No charity found with email: ${stripeEmail}`);
-		} else {
-			// Fallback to userId if email is not available
-			const userId = req.user?.userId;
-			console.log(`User ID from request: ${userId}`);
-			if (userId) {
-				charity = await Charity.findById(userId);
-				if (!charity) console.log(`No charity found with user ID: ${userId}`);
-			}
+		// Ensure the user is a charity
+		if (role !== "Charity") {
+			return res.status(403).json({ message: "Unauthorized. Only charities can connect a Stripe account." });
 		}
 
+		// Find the charity by userId
+		const charity = await Charity.findById(userId);
 		if (!charity) {
-			return res.status(404).json({ message: 'Charity not found. Ensure the charity exists in the database.' });
+			return res.status(404).json({ message: "Charity not found." });
 		}
 
-		// Save the Stripe account ID to the charity's record
+		// Save the Stripe account ID
 		charity.stripeAccountId = stripeAccountId;
 		await charity.save();
 
-		// Log success for debugging
 		console.log(`Stripe account connected successfully for charity: ${charity._id}`);
 
-		// Redirect to success page or return response
+		// Return success response
 		return res.status(200).json({
-			message: 'Stripe account connected successfully',
+			message: "Stripe account connected successfully",
 			stripeAccountId,
 		});
 	} catch (error) {
-		console.error('Stripe OAuth error:', error);
+		console.error("Stripe OAuth error:", error);
 
-		// Handle Stripe-specific errors
-		if (error.type === 'StripeInvalidGrantError') {
-			return res.status(400).json({ message: 'Invalid authorization code' });
+		if (error.type === "StripeInvalidGrantError") {
+			return res.status(400).json({ message: "Invalid authorization code." });
 		}
 
-		return res.status(500).json({ message: 'Error connecting Stripe account', error: error.message });
+		return res.status(500).json({ message: "Error connecting Stripe account.", error: error.message });
+	}
+};
+
+// Middleware to handle file upload
+export const uploadMiddleware = upload.single("file");
+
+export const uploadCharityList = async (req, res) => {
+	try {
+		// Ensure a file was uploaded
+		if (!req.file) {
+			return res.status(400).json({ message: "No file uploaded." });
+		}
+
+		// Parse the uploaded file using xlsx
+		const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+		const sheetName = workbook.SheetNames[0]; // Get the first sheet
+		const sheetData = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+		if (!sheetData || sheetData.length === 0) {
+			return res.status(400).json({ message: "Excel file is empty or invalid." });
+		}
+
+		// Log parsed data for debugging
+		console.log("Parsed Excel data:", sheetData);
+
+		// Map each row to the Charity schema
+		const charities = sheetData.map((row, index) => {
+			// Ensure a unique storefrontId is assigned to each charity
+			const storefrontId = uuidv4(); // Generate unique storefrontId
+
+			// Validate and process the data, assigning default values where needed
+			return {
+				charityName: row.charityName || `Unnamed Charity ${index + 1}`,
+				charityNumber: row.charityNumber || `charity number ${index + 1}`,
+				phoneNumber: row.phoneNumber || `phone number ${index + 1}`,
+				email: row.email || `placeholder${index + 1}@example.com`, 
+				websiteLink: row.websiteLink || `website link ${index + 1}`,
+				description: row.description || `No description provided ${index + 1}`,
+				firstName: row.firstName || `first name ${index + 1}`,
+				lastName: row.lastName || `last name ${index + 1}`,
+				userName: row.userName || `username ${index + 1}`,
+				password: row.password || `password ${index + 1}`,
+				// Add the addresses field as an array with the correct structure
+				addresses: [
+					{
+						type: 'main address',
+						name: row.firstName || `first name ${index + 1}`, // Using first name as an example
+						address: row.address || `Address ${index + 1}`,  // Assuming address exists in the sheet
+						city: row.city || `City ${index + 1}`,  // Assuming city exists in the sheet
+						country: row.country || 'GB',  // Defaulting to GB
+						postcode: row.postcode || `Postcode ${index + 1}`,  // Assuming postcode exists in the sheet
+					}
+				],
+				role: "CHARITY", 
+				profileCompleted: false,
+				verified: false,
+				registrationStatus: "PENDING", 
+				storefrontId, 
+			};
+		});
+
+		// Log the charities data to ensure proper mapping
+		console.log("Charities to be saved:", charities);
+
+		// Insert charities into MongoDB
+		const createdCharities = await Charity.insertMany(charities);
+
+		// Respond with success message
+		res.status(201).json({
+			message: "Charities uploaded successfully.",
+			charities: createdCharities,
+		});
+	} catch (error) {
+		// Log any error and respond with failure message
+		console.error("Error uploading charities:", error);
+		res.status(500).json({ message: "Failed to upload charities.", error });
+	}
+};
+
+// Register charity with password
+export const registerCharity = async (req, res) => {
+	try {
+		const { storefrontId, password } = req.body;
+
+		// Find the charity using the storefrontId
+		const charity = await Charity.findOne({ storefrontId });
+		if (!charity) {
+			return res.status(404).json({ message: 'Charity not found' });
+		}
+
+		// Encrypt the password before saving it
+		const hashedPassword = await bcrypt.hash(password, 10);
+
+		// Update the charity record with the new password and set registration status to "REGISTERED"
+		charity.password = hashedPassword;
+		charity.registrationStatus = 'REGISTERED';
+
+		await charity.save();
+
+		res.status(200).json({ message: 'Registration successful!' });
+	} catch (error) {
+		console.error('Error registering charity:', error);
+		res.status(500).json({ message: 'Registration failed', error: error.message });
 	}
 };

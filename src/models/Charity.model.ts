@@ -47,6 +47,7 @@ export interface ICharity extends Document {
 	addresses: IAddress[];
 	payments: IPaymentMethod[];
 	storefrontId: string;
+	registrationStatus: string;
 	listedProducts: mongoose.Types.ObjectId[];
 	favoriteProducts: mongoose.Types.ObjectId[];
 	favoriteCharities: mongoose.Types.ObjectId[];
@@ -137,6 +138,7 @@ const charitySchema = new Schema<ICharity>(
 		description: { type: String, required: false },
 		storefrontId: { type: String, unique: true, required: false },
 		stripeAccountId: { type: String, required: false },
+		registrationStatus: { type: String, default: 'PENDING' }, 
 		listedProducts: [{ type: Schema.Types.ObjectId, ref: "Product" }],
 		favoriteProducts: [
 			{ type: mongoose.Schema.Types.ObjectId, ref: "Product" },

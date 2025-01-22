@@ -317,9 +317,9 @@ const resetPassword = (req, res) => __awaiter(void 0, void 0, void 0, function* 
     }
 });
 exports.resetPassword = resetPassword;
-// Delete Account
 const deleteAccount = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { userId, role } = req.body;
+    console.log('Received userId:', userId, 'Received role:', role);
     if (!userId) {
         return res.status(400).json({ message: "User ID is required" });
     }
