@@ -57,7 +57,7 @@ export const registerUser = async (req, res) => {
 				newUser = new User({ ...userData, firstName, lastName, name, email, role });
 				break;
 			case "CHARITY":
-				newUser = new Charity({ ...userData, firstName, lastName, name, email, role });
+				newUser = new Charity({ ...userData, firstName, lastName, name, email, role, registrationStatus: "REGISTERED" });
 				break;
 			case "ADMIN":
 				newUser = new Admin({ ...userData, firstName, lastName, email, role });
@@ -72,7 +72,7 @@ export const registerUser = async (req, res) => {
 
 		newUser.verificationCode = verificationCode;
 		newUser.verificationExpiry = verificationExpiry;
-
+        
 		await newUser.save(); 
 
 		// Send email verification link

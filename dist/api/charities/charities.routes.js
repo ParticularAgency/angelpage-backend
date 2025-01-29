@@ -28,7 +28,11 @@ router.put("/profile/payments/:paymentId", (0, auth_middleware_1.authMiddleware)
 router.delete("/profile/payments/:paymentId", (0, auth_middleware_1.authMiddleware)(), charities_controller_1.deletePayment);
 router.get("/charities", charities_controller_1.getCharityList);
 router.get("/charities/:charityid", charities_controller_1.getCharityDetails);
-router.post("/stripe/connect-url", (0, auth_middleware_1.authMiddleware)(), charities_controller_1.generateStripeOAuthUrl);
-router.get('/stripe/connect/callback', (0, auth_middleware_1.authMiddleware)(), charities_controller_1.stripeOAuthCallback);
+// charity onboarding
+router.post("/onboard", charities_controller_1.onBoarding);
+//proceeding order delivery
+router.put("/orders/:orderId/deliver", charities_controller_1.OrderdeliverMark);
+//admin approved for fund releas
+router.put("/funds/release/:charityId", charities_controller_1.approveFundsRelease);
 router.post("/upload-charities", charities_controller_1.uploadMiddleware, charities_controller_1.uploadCharityList);
 exports.default = router;

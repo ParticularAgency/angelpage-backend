@@ -105,7 +105,7 @@ export const createOrder = async (req, res) => {
 			amount: Math.round(grandTotal * 100), // Stripe expects amount in cents
 			currency: "gbp",
 			payment_method_types: ["card"],
-			metadata: { orderId: newOrder._id.toString() },
+			metadata: { orderId: newOrder._id.toString(), },
 
 		});
 
@@ -612,8 +612,6 @@ export const getServices = async (req, res) => {
 		res.status(500).json({ error: "Failed to fetch service list" });
 	}
 };
-
-
 export const getPackages = async (req, res) => {
 	const { carrierCode } = req.params;
 

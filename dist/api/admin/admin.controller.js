@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getPlatformUserSessionsAnalytics = exports.getReturningUserAnalytics = exports.getTotalPlatformUsersWithMonthlyChanges = exports.deleteUser = exports.getTotalPlatformUsersWithDuration = exports.getLiveProducts = exports.deletePayment = exports.updatePayment = exports.addPayment = exports.deleteAddress = exports.updateAddress = exports.addAddress = exports.getAdminData = exports.updateProfile = void 0;
+exports.getCharitiesPendingApproval = exports.getPlatformUserSessionsAnalytics = exports.getReturningUserAnalytics = exports.getTotalPlatformUsersWithMonthlyChanges = exports.deleteUser = exports.getTotalPlatformUsersWithDuration = exports.getLiveProducts = exports.deletePayment = exports.updatePayment = exports.addPayment = exports.deleteAddress = exports.updateAddress = exports.addAddress = exports.getAdminData = exports.updateProfile = void 0;
 const date_fns_1 = require("date-fns");
 const cloudinary_1 = __importDefault(require("../../config/cloudinary"));
 const LoginActivity_model_1 = __importDefault(require("../../models/LoginActivity.model"));
@@ -22,6 +22,9 @@ const User_model_1 = __importDefault(require("../../models/User.model"));
 const Charity_model_1 = __importDefault(require("../../models/Charity.model"));
 const Product_model_1 = __importDefault(require("../../models/Product.model"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const stripe_1 = __importDefault(require("stripe"));
+const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });
+const MINIMUM_THRESHOLD = 0.5;
 // Utility to handle unknown error types
 const handleUnknownError = (error) => error instanceof Error ? error.message : "An unknown error occurred";
 // Update User Profile
@@ -653,3 +656,88 @@ const getPlatformUserSessionsAnalytics = (_req, res) => __awaiter(void 0, void 0
     }
 });
 exports.getPlatformUserSessionsAnalytics = getPlatformUserSessionsAnalytics;
+// Controller to get charities meeting the minimum threshold and pending approval
+const getCharitiesPendingApproval = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        // Find charities with totalHeldFunds greater than or equal to the minimum threshold and adminConfirmed is false
+        const charities = yield Charity_model_1.default.find({
+            totalHeldFunds: { $gte: MINIMUM_THRESHOLD },
+            adminConfirmed: false,
+        });
+        // If no charities are found
+        if (!charities || charities.length === 0) {
+            return res.status(404).json({ message: "No charities are pending approval." });
+        }
+        // Return the list of charities to the admin
+        res.status(200).json(charities);
+    }
+    catch (error) {
+        console.error("Error fetching charities for approval:", error);
+        res.status(500).json({ message: "Error fetching charities for approval", error });
+    }
+});
+exports.getCharitiesPendingApproval = getCharitiesPendingApproval;
+// // Admin approves funds release for a specific charity
+// export const approveFundsRelease = async (req, res) => {
+// 	const { charityId } = req.params;
+// 	const charity = await Charity.findById(charityId);
+// 	if (!charity) {
+// 		return res.status(404).json({ message: "Charity not found" });
+// 	}
+// 	// Only proceed if charity has totalHeldFunds and is eligible
+// 	if (charity.totalHeldFunds < MINIMUM_THRESHOLD) {
+// 		return res.status(400).json({ error: "Charity does not meet the minimum threshold" });
+// 	}
+// 	// Perform the transfer of funds to the charity's Stripe account
+// 	try {
+// 		await stripe.transfers.create({
+// 			amount: Math.round(charity.totalHeldFunds * 100), // Amount in pence
+// 			currency: "gbp",
+// 			destination: charity.stripeAccountId,
+// 			description: `Payout for charity ${charity.name}`,
+// 		});
+// 		// Reset the totalHeldFunds after the release
+// 		charity.totalHeldFunds = 0;
+// 		// Mark the funds as admin confirmed
+// 		charity.adminConfirmed = true;
+// 		await charity.save();
+// 		// Send success response
+// 		res.status(200).json({ message: "Funds released and charity confirmed" });
+// 	} catch (error) {
+// 		console.error("Error approving funds release:", error);
+// 		res.status(500).json({ message: "Error releasing funds", error });
+// 	}
+// };
+// // 14-day automatic release if no admin approval
+// export const automaticReleaseAfter14Days = async () => {
+// 	const charities = await Charity.find({
+// 		totalHeldFunds: { $gte: MINIMUM_THRESHOLD },
+// 		holdDate: { $ne: null },
+// 	});
+// 	const today = new Date();
+// 	for (const charity of charities) {
+// 		const daysSinceHold = Math.floor((today - charity.holdDate) / (1000 * 3600 * 24));
+// 		if (daysSinceHold >= 14 && !charity.adminConfirmed) {
+// 			await releaseFunds(charity);
+// 		}
+// 	}
+// };
+// // Release funds after admin confirmation or 14 days automatically
+// export const releaseFunds = async (charity) => {
+// 	try {
+// 		await stripe.transfers.create({
+// 			amount: Math.round(charity.totalHeldFunds * 100),
+// 			currency: "gbp",
+// 			destination: charity.stripeAccountId,
+// 			description: `Payout for charity ${charity.charityName}`,
+// 		});
+// 		// Reset the totalHeldFunds after the release
+// 		charity.totalHeldFunds = 0;
+// 		await charity.save();
+// 		// Optionally, send email notifications here
+// 	} catch (error) {
+// 		console.error("Error releasing funds:", error);
+// 	}
+// };
+// // Run automatic fund release check every day
+// setInterval(automaticReleaseAfter14Days, 1000 * 3600 * 24); // Runs daily

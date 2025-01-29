@@ -93,7 +93,7 @@ const createOrder = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             amount: Math.round(grandTotal * 100), // Stripe expects amount in cents
             currency: "gbp",
             payment_method_types: ["card"],
-            metadata: { orderId: newOrder._id.toString() },
+            metadata: { orderId: newOrder._id.toString(), },
         });
         yield Cart_model_1.default.findOneAndUpdate({ userId: buyerId }, { items: [] });
         // ShipStation integration

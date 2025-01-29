@@ -25,4 +25,9 @@ router.delete("/users/:userId", (0, auth_middleware_1.authMiddleware)(), admin_c
 router.get('/users/analytics', (0, auth_middleware_1.authMiddleware)(), admin_controller_1.getTotalPlatformUsersWithMonthlyChanges);
 router.get("/analytics/returning-users-weekly", (0, auth_middleware_1.authMiddleware)(), admin_controller_1.getReturningUserAnalytics);
 router.get("/analytics/user-sessions-weekly", (0, auth_middleware_1.authMiddleware)(), admin_controller_1.getPlatformUserSessionsAnalytics);
+//charity fund pending approval lists
+router.get("/charities/pending-approval", (0, auth_middleware_1.authMiddleware)(), admin_controller_1.getCharitiesPendingApproval);
+//admin approved for fund releas
+// router.put("/funds/release/:charityId", approveFundsRelease)
+//charity fund release data lists
 exports.default = router;

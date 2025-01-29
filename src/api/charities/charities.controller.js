@@ -1,9 +1,12 @@
 
 import multer from "multer";
 import xlsx from "xlsx";
+import moment from 'moment';
 import cloudinary from "../../config/cloudinary";
 import Charity from "../../models/Charity.model";
+import Order from "../../models/Order.model";
 import bcrypt from "bcryptjs";
+import {sendEmail} from "../../utils/email.ts";
 import Stripe from 'stripe';
 import { v4 as uuidv4 } from 'uuid';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });
@@ -12,6 +15,10 @@ const upload = multer({
 	storage: multer.memoryStorage(), // Store file in memory for processing
 	limits: { fileSize: 50 * 1024 * 1024 }, // Limit file size to 10MB
 });
+const MINIMUM_THRESHOLD = 0.5; // Minimum amount for release to charity
+const STRIPE_TRANSFER_FEE_PERCENTAGE = 0.029; // 2.9% Stripe transfer fee
+const STRIPE_TRANSFER_FEE_FIXED = 0.3; // 30p fixed fee for Stripe transfers
+
 // Update profile function
 export const updateProfile = async (req, res) => {
 	try {
@@ -231,7 +238,6 @@ export const deleteAddress = async (req, res) => {
 	}
 };
 
-
 // payment methodes schamas start here
 
 export const addPayment = async (req, res) => {
@@ -406,84 +412,6 @@ export const getCharityDetails = async (req, res) => {
 		res.status(500).json({ message: 'Internal server error' });
 	}
 };
-
-// Endpoint to generate Stripe Connect OAuth URL
-export const generateStripeOAuthUrl = async (_req, res) => {
-	// const redirectUri = `${process.env.FRONTEND_BASE_URL}/`; // URL to redirect after Stripe authentication
-	const redirectUri = 'http://localhost:3000/stripe/callback';
-
-	try {
-		// Generate the Stripe Connect OAuth URL
-		const oauthUrl = stripe.oauth.authorizeUrl({
-			scope: 'read_write',
-			redirect_uri: redirectUri,
-			client_id: process.env.STRIPE_CLIENT_ID,
-		});
-
-		// Send the OAuth URL to the frontend
-		res.json({ url: oauthUrl });
-	} catch (error) {
-		console.error('Error generating Stripe OAuth URL:', error);
-		res.status(500).json({ error: 'Failed to generate Stripe OAuth URL' });
-	}
-};
-
-
-// Handle the Stripe OAuth callback
-export const stripeOAuthCallback = async (req, res) => {
-	const { code } = req.query;
-	const { userId, role } = req.user;
-	console.log("req.user:", req.user);
-	console.log("Stripe OAuth Token Response:", response);
-	console.log("Saving Stripe account ID for charity:", charity);
-
-	if (!code) {
-		return res.status(400).json({ message: "Authorization code not found." });
-	}
-
-	try {
-		// Exchange the authorization code for an access token
-		const response = await stripe.oauth.token({
-			grant_type: "authorization_code",
-			code: req.query.code,
-		});
-
-		const stripeAccountId = response.stripe_user_id; // Extract Stripe account ID
-		console.log('Connected account ID:', stripeAccountId);
-
-		// Ensure the user is a charity
-		if (role !== "Charity") {
-			return res.status(403).json({ message: "Unauthorized. Only charities can connect a Stripe account." });
-		}
-
-		// Find the charity by userId
-		const charity = await Charity.findById(userId);
-		if (!charity) {
-			return res.status(404).json({ message: "Charity not found." });
-		}
-
-		// Save the Stripe account ID
-		charity.stripeAccountId = stripeAccountId;
-		await charity.save();
-
-		console.log(`Stripe account connected successfully for charity: ${charity._id}`);
-
-		// Return success response
-		return res.status(200).json({
-			message: "Stripe account connected successfully",
-			stripeAccountId,
-		});
-	} catch (error) {
-		console.error("Stripe OAuth error:", error);
-
-		if (error.type === "StripeInvalidGrantError") {
-			return res.status(400).json({ message: "Invalid authorization code." });
-		}
-
-		return res.status(500).json({ message: "Error connecting Stripe account.", error: error.message });
-	}
-};
-
 // Middleware to handle file upload
 export const uploadMiddleware = upload.single("file");
 
@@ -516,7 +444,7 @@ export const uploadCharityList = async (req, res) => {
 				charityName: row.charityName || `Unnamed Charity ${index + 1}`,
 				charityNumber: row.charityNumber || `charity number ${index + 1}`,
 				phoneNumber: row.phoneNumber || `phone number ${index + 1}`,
-				email: row.email || `placeholder${index + 1}@example.com`, 
+				email: row.email || `placeholder${index + 1}@example.com`,
 				websiteLink: row.websiteLink || `website link ${index + 1}`,
 				description: row.description || `No description provided ${index + 1}`,
 				firstName: row.firstName || `first name ${index + 1}`,
@@ -534,11 +462,11 @@ export const uploadCharityList = async (req, res) => {
 						postcode: row.postcode || `Postcode ${index + 1}`,  // Assuming postcode exists in the sheet
 					}
 				],
-				role: "CHARITY", 
+				role: "CHARITY",
 				profileCompleted: false,
 				verified: false,
-				registrationStatus: "PENDING", 
-				storefrontId, 
+				registrationStatus: "PENDING",
+				storefrontId,
 			};
 		});
 
@@ -584,5 +512,475 @@ export const registerCharity = async (req, res) => {
 	} catch (error) {
 		console.error('Error registering charity:', error);
 		res.status(500).json({ message: 'Registration failed', error: error.message });
+	}
+};
+
+// Endpoint to mark the order as delivered
+export const OrderdeliverMark = async (req, res) => {
+	const { orderId } = req.params;
+
+	try {
+		// Find the order by ID
+		const order = await Order.findById(orderId);
+
+		if (!order) {
+			return res.status(404).json({ message: "Order not found" });
+		}
+
+		// Update the order status to "delivered"
+		order.status = "Delivered";
+		order.orderStatus = "Delivered";
+		await order.save(); // Save the updated order
+
+		// Trigger the process of splitting the funds and updating charity wallets
+		await processOrderDelivery(orderId);
+
+		// Send success response
+		res.status(200).json({ message: "Order marked as delivered and funds split" });
+	} catch (error) {
+		console.error("Error marking order as delivered:", error);
+		res.status(500).json({ message: "Error marking order as delivered", error });
+	}
+};
+
+export const processOrderDelivery = async (orderId) => {
+	const order = await Order.findById(orderId).populate("products");
+
+	if (!order) throw new Error("Order not found");
+	if (order.status !== "Delivered") return;
+
+	// Subtract shipping cost and admin fee
+	const remainingAmount = order.grandTotal - order.shipmentCost;
+	const adminFee = remainingAmount * 0.1;
+	const charityAmount = remainingAmount - adminFee;
+
+	console.log(`Remaining Amount: ${remainingAmount}`);
+	console.log(`Admin Fee: ${adminFee}`);
+	console.log(`Charity Amount: ${charityAmount}`);
+
+	const totalCharityProfit = order.products.reduce(
+		(sum, product) => sum + product.charityProfit,
+		0
+	);
+
+	console.log(`Total Charity Profit: ${totalCharityProfit}`);
+
+	for (const product of order.products) {
+		const charityShare = (charityAmount * product.charityProfit) / totalCharityProfit;
+
+		console.log(`Charity Share for Product: ${charityShare}`);
+
+		// Calculate Stripe transfer fee
+		const stripeFee = Math.round(charityShare * STRIPE_TRANSFER_FEE_PERCENTAGE + STRIPE_TRANSFER_FEE_FIXED);
+
+		console.log(`Stripe Fee: ${stripeFee}`);
+
+		const netCharityAmount = charityShare - stripeFee;
+
+		console.log(`Net Charity Amount: ${netCharityAmount}`);
+
+		const charity = await Charity.findById(product.charity);
+		if (charity) {
+			// Calculate days passed since payment confirmation
+			const paymentConfirmedDate = moment(order.paymentConfirmedAt);
+			const daysSincePaymentConfirmed = moment().diff(paymentConfirmedDate, 'days');
+			
+			if (daysSincePaymentConfirmed >= 7) {
+				// Move funds to totalHeldFunds after 7 days
+				await Charity.findByIdAndUpdate(product.charity, 
+					{
+						$inc: { totalHeldFunds: netCharityAmount },
+						$set: { upcomingFunds: 0, holdDate: new Date() },
+					}
+				);
+				if (!charity.registrationStatus === "REGISTERED") {
+					await sendEmail({
+						to: charity.email,
+						subject: "Complete Account Registration on AngelPage",
+						text: `Dear ${charity.name}, please complete your Charity Account Registration. One of your donations is waiting for admin approval.`,
+					});
+				}
+				else if (!charity.stripeAccountId) {
+					await sendEmail({
+						to: charity.email,
+						subject: "Complete Your Charity Profile on AngelPage",
+						text: `Dear ${charity.name}, please complete your profile and set up your Stripe account to receive your funds. One of your donations is waiting for admin approval.`,
+					});
+				}
+				else if (!charity.email) {
+					// Notify the admin if the charity doesn't have an email address
+					await sendEmail({
+						to: process.env.ADMIN_EMAIL,
+						subject: `Charity ${charity.name} is missing email address`,
+						text: `Charity Name: ${charity.name}, Phone: ${charity.phoneNumber}, Address: ${charity.addresses[0].address},${charity.addresses[0].postcode},${charity.addresses[0].city},${charity.addresses[0].country} does not have an email address on file. Please contact them to complete their registration process, including Stripe account setup.`,
+					});
+				} else {
+						await sendEmail({
+							to: charity.email,
+							subject: "Funds Moved to Held Funds",
+							text: `Dear ${charity.charityName}, your funds have been moved to your held balance after 7 days of payment confirmation.`,
+						});
+				}
+			} else {
+				// Funds are still in upcomingFunds if not 7 days yet
+				await Charity.findByIdAndUpdate(product.charity, 
+					{
+						$inc: { upcomingFunds: netCharityAmount },
+						$set: { holdDate: new Date() }, // Set the hold date to track
+					}
+				);
+				if (!charity.registrationStatus === "REGISTERED") {
+					await sendEmail({
+						to: charity.email,
+						subject: "Complete Account Registration on AngelPage",
+						text: `Dear ${charity.name}, please complete your Charity Account Registration. One of your donations is waiting.`,
+					});
+				}
+				else if (!charity.email) {
+					// Notify the admin if the charity doesn't have an email address
+					await sendEmail({
+						to: process.env.ADMIN_EMAIL,
+						subject: `Charity ${charity.name} is missing email address`,
+						text: `Charity Name: ${charity.name}, Phone: ${charity.phoneNumber}, Address: ${charity.addresses[0].address},${charity.addresses[0].postcode},${charity.addresses[0].city},${charity.addresses[0].country} does not have an email address on file. Please contact them to complete their registration process, including Stripe account setup.`,
+					});
+				} else {
+						await sendEmail({
+							to: charity.email,
+							subject: "Funds Awaiting on Upcoming fund area",
+							text: `Dear ${charity.charityName}, your funds have been awaiting to your held balance after 7 days of payment confirmation it will moved to held fund area for awaiting admin approval.`,
+						});
+				}
+			}
+		}
+		
+	}
+};
+
+// Function to check and automatically move funds from upcomingFunds to totalHeldFunds after 7 days
+export const automaticMoveToHeldFunds = async () => {
+	const charities = await Charity.find({
+		upcomingFunds: { $gt: 0 }, // Only check if there are funds in upcomingFunds
+		holdDate: { $ne: null }, // Check that a hold date exists
+	});
+
+	const today = new Date();
+
+	for (const charity of charities) {
+		// Get the corresponding order for the charity
+		const order = await Order.findOne({ 'products.charity': charity._id });
+		const daysSinceHold = Math.floor((today - order.paymentConfirmedAt) / (1000 * 3600 * 24));
+
+		if (daysSinceHold >= 7) {
+			// Move the funds from upcomingFunds to totalHeldFunds after 7 days
+			await Charity.findByIdAndUpdate(charity._id, 
+				{
+					$inc: {
+						totalHeldFunds: charity.upcomingFunds,
+						upcomingFunds: -charity.upcomingFunds // Reset upcomingFunds
+					},
+					$set: { holdDate: new Date() }, 
+				}
+			);
+			console.log(`Moved £${charity.upcomingFunds} to totalHeldFunds for charity ${charity.charityName}`);
+			// Optionally, you can also send an email to notify the charity about the fund release
+			
+			if (!charity.registrationStatus === "REGISTERED") {
+				await sendEmail({
+					to: charity.email,
+					subject: "Complete Account Registration on AngelPage",
+					text: `Dear ${charity.name}, please complete your Charity Account Registration. One of your donations is waiting for admin approval.`,
+				});
+			}
+			else if (!charity.stripeAccountId) {
+				await sendEmail({
+					to: charity.email,
+					subject: "Complete Your Charity Profile on AngelPage",
+					text: `Dear ${charity.name}, please complete your profile and set up your Stripe account to receive your funds. One of your donations is waiting for admin approval.`,
+				});
+			}
+			else if (!charity.email) {
+				// Notify the admin if the charity doesn't have an email address
+				await sendEmail({
+					to: process.env.ADMIN_EMAIL,
+					subject: `Charity ${charity.name} is missing email address`,
+					text: `Charity Name: ${charity.name}, Phone: ${charity.phoneNumber}, Address: ${charity.addresses[0].address},${charity.addresses[0].postcode},${charity.addresses[0].city},${charity.addresses[0].country} does not have an email address on file. Please contact them to complete their registration process, including Stripe account setup.`,
+				});
+			}else{
+					await sendEmail({
+						to: charity.email,
+						subject: "Funds Moved to Held Funds",
+						text: `Dear ${charity.charityName}, your funds have been moved to your held balance after 7 days of payment confirmation.`,
+					});
+			}
+		}
+	}
+};
+
+// Run the automatic check every day
+setInterval(automaticMoveToHeldFunds, 1000 * 3600 * 24); // Runs daily
+
+
+
+// Admin approves funds release for a specific charity
+export const approveFundsRelease = async (req, res) => {
+	const { charityId } = req.params;
+	const charity = await Charity.findById(charityId);
+
+	if (!charity) {
+		return res.status(404).json({ message: "Charity not found" });
+	}
+
+	// Only proceed if charity has totalHeldFunds and is eligible
+	if (charity.totalHeldFunds < MINIMUM_THRESHOLD) {
+		return res.status(400).json({ error: "Charity does not meet the minimum threshold" });
+	}
+
+	// Check if charity is registered
+	if (charity.registrationStatus !== "REGISTERED") {
+		return res.status(400).json({ error: "Charity is not fully registered" });
+	}
+
+	// Check if charity has a Stripe account
+	if (!charity.stripeAccountId) {
+		return res.status(400).json({ error: "Charity does not have a Stripe account" });
+	}
+
+	// Check if charity has an email address
+	if (!charity.email) {
+		// Notify admin if charity doesn't have an email address
+		await sendEmail({
+			to: process.env.ADMIN_EMAIL,
+			subject: `Charity ${charity.name} is missing email address`,
+			text: `Charity Name: ${charity.name}, Phone: ${charity.phoneNumber}, Address: ${charity.addresses[0].address}, ${charity.addresses[0].postcode}, ${charity.addresses[0].city}, ${charity.addresses[0].country} does not have an email address on file. Please contact them to complete their registration process, including Stripe account setup.`,
+		});
+		return res.status(400).json({ error: "Charity does not have an email address" });
+	}
+
+	// Perform the transfer of funds to the charity's Stripe account
+	try {
+		await stripe.transfers.create({
+			amount: Math.round(charity.totalHeldFunds * 100),
+			currency: "gbp",
+			destination: charity.stripeAccountId,
+			description: `Payout for charity ${charity.name}`,
+		});
+
+		// Reset the totalHeldFunds after the release
+		charity.totalHeldFunds = 0;
+
+		// Mark the funds as admin confirmed
+		charity.adminConfirmed = true;
+		await charity.save();
+		// Optionally, send email notifications here
+		await sendEmail({
+			to: charity.email,
+			subject: "Funds Released to Your Account",
+			text: `Dear ${charity.name}, your funds have been released to your Stripe account.`,
+		});
+		console.log(`Released funds for charity ${charity.name}`);
+		// Send success response
+		res.status(200).json({ message: "Funds released and charity confirmed" });
+	} catch (error) {
+		console.error("Error approving funds release:", error);
+		res.status(500).json({ message: "Error releasing funds", error });
+	}
+};
+
+// 14-day automatic release if no admin approval
+export const automaticReleaseAfter14Days = async () => {
+	const charities = await Charity.find({
+		totalHeldFunds: { $gte: MINIMUM_THRESHOLD },
+		holdDate: { $ne: null },
+	});
+
+	const today = new Date();
+
+	for (const charity of charities) {
+		const daysSinceHold = Math.floor((today - charity.holdDate) / (1000 * 3600 * 24));
+
+		if (daysSinceHold >= 14 && !charity.adminConfirmed) {
+			await releaseFunds(charity);
+		}
+	}
+};
+
+// Release funds after admin confirmation or 14 days automatically
+export const releaseFunds = async (charity) => {
+	
+	try {
+		// Check charity registration, Stripe account, and email before proceeding
+		if (charity.registrationStatus !== "REGISTERED") {
+			return console.error(`Charity ${charity.name} is not fully registered.`);
+		}
+		if (!charity.stripeAccountId) {
+			return console.error(`Charity ${charity.name} does not have a Stripe account.`);
+		}
+		if (!charity.email) {
+			// Notify admin about missing email
+			await sendEmail({
+				to: process.env.ADMIN_EMAIL,
+				subject: `Charity ${charity.name} is missing email address`,
+				text: `Charity Name: ${charity.name} does not have an email address on file. Please contact them to complete their registration process, including Stripe account setup.`,
+			});
+			return console.error(`Charity ${charity.name} does not have an email address.`);
+		}
+		await stripe.transfers.create({
+			amount: Math.round(charity.totalHeldFunds * 100),
+			currency: "gbp",
+			destination: charity.stripeAccountId,
+			description: `Payout for charity ${charity.charityName}`,
+		});
+
+		// Reset the totalHeldFunds after the release
+		charity.totalHeldFunds = 0;
+		await charity.save();
+		// Optionally, send email notifications here
+		await sendEmail({
+			to: charity.email,
+			subject: "Funds Released to Your Account",
+			text: `Dear ${charity.name}, your funds have been released to your Stripe account.`,
+		});
+		console.log(`Released funds for charity ${charity.name}`);
+		// Optionally, send email notifications here
+	} catch (error) {
+		console.error("Error releasing funds:", error);
+	}
+};
+
+// Run automatic fund release check every day
+setInterval(automaticReleaseAfter14Days, 1000 * 3600 * 24); // Runs daily
+
+
+// POST: /api/stripe/onboard
+export const onBoarding = async (req, res) => {
+	const { charityId } = req.body;
+	const redirectUri = 'http://localhost:3000/';
+	try {
+		// Find the charity in the database
+		const charity = await Charity.findById(charityId);
+		if (!charity) return res.status(404).json({ error: "Charity not found" });
+
+		// If the charity already has a Stripe account, return the link
+		if (charity.stripeAccountId) {
+			return res.json({
+				message: "Charity already has a Stripe account.",
+				stripeAccountId: charity.stripeAccountId,
+			});
+		}
+
+		// Create a new Stripe account for the charity
+		const account = await stripe.accounts.create({
+			type: "express",
+			country: "GB", // You can change the country based on your requirement
+			email: charity.email,
+			capabilities: { transfers: { requested: true } },
+		});
+
+		// Save the Stripe account ID in the charity document
+		charity.stripeAccountId = account.id;
+		await charity.save();
+
+		// Generate an onboarding link
+		const accountLink = await stripe.accountLinks.create({
+			account: account.id,
+			refresh_url: redirectUri,
+			return_url: redirectUri,
+			type: "account_onboarding",
+		});
+		// Send email with the Onboarding URL
+		const onboardingUrl = accountLink.url;
+		await sendStripeMissingInfoEmail(charity, onboardingUrl);
+		// Return the onboarding URL to the frontend
+		res.json({ onboardingUrl: accountLink.url });
+	} catch (error) {
+		console.error("Error onboarding charity:", error);
+		res.status(500).json({ error: "Internal Server Error" });
+	}
+};
+// Webhook to listen to Stripe events
+export const accountUpdateEvent = async (req, res) => {
+	const sig = req.headers['stripe-signature'];
+	let event;
+
+	try {
+		// Verify the webhook signature to ensure the event is from Stripe
+		event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+
+		// Handle the event
+		if (event.type === 'account.updated') {
+			const account = event.data.object; // Stripe account object
+
+			// Check if additional information is required
+			if (account.requirements && account.requirements.pending_verification) {
+				// Send email to the charity notifying them about missing information
+				const charity = await Charity.findOne({ stripeAccountId: account.id });
+
+				if (charity) {
+					// Send email to charity
+					await sendStripeMissingInfoEmail(charity);
+				}
+			}
+		}
+
+		// Respond to Stripe that the event has been received successfully
+		res.status(200).send('Event received');
+	} catch (err) {
+		// If event signature verification fails
+		console.log(`Webhook Error: ${err.message}`);
+		res.status(400).send(`Webhook Error: ${err.message}`);
+	}
+};
+
+export const sendStripeMissingInfoEmail = async (charity, onboardingUrl) => {
+	const message = `
+    Dear ${charity.charityName},
+
+    We noticed that your Stripe account is missing some important information. To continue receiving payments, please complete the following steps in your Stripe dashboard:
+    
+    **Required Information:**
+    - Identity Verification (Government-issued ID).
+    - Bank Account Details (for payouts).
+    
+    You can complete the verification here: <a href="${onboardingUrl}">Complete Your Stripe Setup</a>
+
+    Please complete the required steps to avoid any disruptions in receiving payments.
+
+    Best regards,
+    Your Team
+  `;
+
+	try {
+		// Send email to charity
+		await sendEmail({
+			to: charity.email,
+			subject: 'Action Required: Complete Your Stripe Account Onboarding',
+			text: message,
+			html: `<p>${message}</p>`,
+		});
+
+		// Send email to admin if charity email is missing
+		if (!charity.email) {
+			const adminMessage = `
+        Dear Admin,
+
+        The charity ${charity.charityName} (ID: ${charity._id}) is missing some important details in their Stripe account. They need to complete the following:
+        - Identity Verification (Government-issued ID).
+        - Bank Account Details (for payouts).
+        
+        Please reach out to them to complete these details.
+
+        Best regards,
+        Your Team
+      `;
+
+			await sendEmail({
+				to: process.env.ADMIN_EMAIL,
+				subject: `Charity Missing Information: ${charity.charityName}`,
+				text: adminMessage,
+				html: `<p>${adminMessage}</p>`,
+			});
+		}
+	} catch (error) {
+		console.error('Error sending missing info email:', error);
 	}
 };

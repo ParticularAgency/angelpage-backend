@@ -47,7 +47,6 @@ export interface ICharity extends Document {
 	addresses: IAddress[];
 	payments: IPaymentMethod[];
 	storefrontId: string;
-	registrationStatus: string;
 	listedProducts: mongoose.Types.ObjectId[];
 	favoriteProducts: mongoose.Types.ObjectId[];
 	favoriteCharities: mongoose.Types.ObjectId[];
@@ -55,7 +54,14 @@ export interface ICharity extends Document {
 	lastWelcomeBackEmailSent?: Date;
 	verificationCode?: string;
 	verificationExpiry?: Date;
-	stripeAccountId?: string;
+	stripeAccountId?: string; // Stripe Account ID
+	totalEarned: number; // Total funds accumulated for charity
+	upcomingFunds: number;
+	totalHeldFunds: number; // Total funds held for payout
+	thresholdReached: boolean; // Indicates whether the charity has reached the payout threshold
+	registrationStatus: string; // The current registration status (e.g., 'PENDING', 'ACTIVE')
+	holdDate: Date;
+	adminConfirmed: boolean;
 }
 
 // Address schema for embedding
@@ -138,7 +144,13 @@ const charitySchema = new Schema<ICharity>(
 		description: { type: String, required: false },
 		storefrontId: { type: String, unique: true, required: false },
 		stripeAccountId: { type: String, required: false },
-		registrationStatus: { type: String, default: 'PENDING' }, 
+		registrationStatus: { type: String, default: "PENDING" },
+		totalEarned: { type: Number, default: 0 },
+		totalHeldFunds: { type: Number, default: 0 },
+		upcomingFunds: { type: Number, default: 0 },
+		thresholdReached: { type: Boolean, default: false },
+		holdDate: { type: Date, required: false },
+		adminConfirmed: { type: Boolean, default: false },
 		listedProducts: [{ type: Schema.Types.ObjectId, ref: "Product" }],
 		favoriteProducts: [
 			{ type: mongoose.Schema.Types.ObjectId, ref: "Product" },

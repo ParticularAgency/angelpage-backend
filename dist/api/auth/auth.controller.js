@@ -63,7 +63,7 @@ const registerUser = (req, res) => __awaiter(void 0, void 0, void 0, function* (
                 newUser = new User_model_1.default(Object.assign(Object.assign({}, userData), { firstName, lastName, name, email, role }));
                 break;
             case "CHARITY":
-                newUser = new Charity_model_1.default(Object.assign(Object.assign({}, userData), { firstName, lastName, name, email, role }));
+                newUser = new Charity_model_1.default(Object.assign(Object.assign({}, userData), { firstName, lastName, name, email, role, registrationStatus: "REGISTERED" }));
                 break;
             case "ADMIN":
                 newUser = new Admin_model_1.default(Object.assign(Object.assign({}, userData), { firstName, lastName, email, role }));

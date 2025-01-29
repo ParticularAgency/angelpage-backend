@@ -15,6 +15,8 @@ import {
 	getTotalPlatformUsersWithMonthlyChanges,
 	getPlatformUserSessionsAnalytics,
 	getReturningUserAnalytics,
+	getCharitiesPendingApproval,
+	// approveFundsRelease,
 } from "./admin.controller";
 import multer from "multer";
 
@@ -49,5 +51,11 @@ router.get('/users/analytics', authMiddleware(), getTotalPlatformUsersWithMonthl
 
 router.get("/analytics/returning-users-weekly", authMiddleware(), getReturningUserAnalytics);
 router.get("/analytics/user-sessions-weekly", authMiddleware(), getPlatformUserSessionsAnalytics);
+//charity fund pending approval lists
+router.get("/charities/pending-approval", authMiddleware(), getCharitiesPendingApproval);
+//admin approved for fund releas
+// router.put("/funds/release/:charityId", approveFundsRelease)
+
+//charity fund release data lists
 
 export default router;

@@ -15,10 +15,11 @@ import {
 	updateCharityAdminInfo,
 	getCharityList,
 	getCharityDetails,
-	generateStripeOAuthUrl,
-	stripeOAuthCallback, 
+	onBoarding,
 	uploadMiddleware, 
-	uploadCharityList
+	uploadCharityList,
+	OrderdeliverMark,
+	approveFundsRelease,
 } from "./charities.controller";
 
 const router = Router();
@@ -61,9 +62,17 @@ router.get("/charities", getCharityList);
 
 router.get("/charities/:charityid", getCharityDetails);
 
-router.post("/stripe/connect-url", authMiddleware(), generateStripeOAuthUrl);
+// charity onboarding
+router.post("/onboard", onBoarding);
+//proceeding order delivery
+router.put("/orders/:orderId/deliver", OrderdeliverMark);
 
-router.get('/stripe/connect/callback', authMiddleware(), stripeOAuthCallback);
+//admin approved for fund releas
+router.put("/funds/release/:charityId", approveFundsRelease)
+
+
 router.post("/upload-charities", uploadMiddleware, uploadCharityList);
+
+
 
 export default router;
