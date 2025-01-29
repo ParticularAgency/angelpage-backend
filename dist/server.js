@@ -96,16 +96,16 @@ io.on("connection", (socket) => {
     });
 });
 // Basic route for health check
-app.get('/', (req, res) => {
-    res.send('Backend server is running!');
+app.get("/", (req, res) => {
+    res.send("Backend server is running!");
 });
 // API Routes
-app.use('/api', routes_1.default);
+app.use("/api", routes_1.default);
 // Catch-all route for 404
 app.use((req, res) => {
     res.status(404).json({
         success: false,
-        message: 'API endpoint not found',
+        message: "API endpoint not found",
     });
 });
 // Error handling middleware

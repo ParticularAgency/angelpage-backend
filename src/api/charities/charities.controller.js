@@ -6,7 +6,7 @@ import cloudinary from "../../config/cloudinary";
 import Charity from "../../models/Charity.model";
 import Order from "../../models/Order.model";
 import bcrypt from "bcryptjs";
-import {sendEmail} from "../../utils/email.ts";
+import {sendEmail} from "../../utils/email";
 import Stripe from 'stripe';
 import { v4 as uuidv4 } from 'uuid';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });

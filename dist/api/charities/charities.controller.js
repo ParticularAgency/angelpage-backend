@@ -20,7 +20,7 @@ const cloudinary_1 = __importDefault(require("../../config/cloudinary"));
 const Charity_model_1 = __importDefault(require("../../models/Charity.model"));
 const Order_model_1 = __importDefault(require("../../models/Order.model"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
-const email_ts_1 = require("../../utils/email.ts");
+const email_1 = require("../../utils/email");
 const stripe_1 = __importDefault(require("stripe"));
 const uuid_1 = require("uuid");
 const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });
@@ -533,14 +533,14 @@ const processOrderDelivery = (orderId) => __awaiter(void 0, void 0, void 0, func
                     $set: { upcomingFunds: 0, holdDate: new Date() },
                 });
                 if (!charity.registrationStatus === "REGISTERED") {
-                    yield (0, email_ts_1.sendEmail)({
+                    yield (0, email_1.sendEmail)({
                         to: charity.email,
                         subject: "Complete Account Registration on AngelPage",
                         text: `Dear ${charity.name}, please complete your Charity Account Registration. One of your donations is waiting for admin approval.`,
                     });
                 }
                 else if (!charity.stripeAccountId) {
-                    yield (0, email_ts_1.sendEmail)({
+                    yield (0, email_1.sendEmail)({
                         to: charity.email,
                         subject: "Complete Your Charity Profile on AngelPage",
                         text: `Dear ${charity.name}, please complete your profile and set up your Stripe account to receive your funds. One of your donations is waiting for admin approval.`,
@@ -548,14 +548,14 @@ const processOrderDelivery = (orderId) => __awaiter(void 0, void 0, void 0, func
                 }
                 else if (!charity.email) {
                     // Notify the admin if the charity doesn't have an email address
-                    yield (0, email_ts_1.sendEmail)({
+                    yield (0, email_1.sendEmail)({
                         to: process.env.ADMIN_EMAIL,
                         subject: `Charity ${charity.name} is missing email address`,
                         text: `Charity Name: ${charity.name}, Phone: ${charity.phoneNumber}, Address: ${charity.addresses[0].address},${charity.addresses[0].postcode},${charity.addresses[0].city},${charity.addresses[0].country} does not have an email address on file. Please contact them to complete their registration process, including Stripe account setup.`,
                     });
                 }
                 else {
-                    yield (0, email_ts_1.sendEmail)({
+                    yield (0, email_1.sendEmail)({
                         to: charity.email,
                         subject: "Funds Moved to Held Funds",
                         text: `Dear ${charity.charityName}, your funds have been moved to your held balance after 7 days of payment confirmation.`,
@@ -569,7 +569,7 @@ const processOrderDelivery = (orderId) => __awaiter(void 0, void 0, void 0, func
                     $set: { holdDate: new Date() }, // Set the hold date to track
                 });
                 if (!charity.registrationStatus === "REGISTERED") {
-                    yield (0, email_ts_1.sendEmail)({
+                    yield (0, email_1.sendEmail)({
                         to: charity.email,
                         subject: "Complete Account Registration on AngelPage",
                         text: `Dear ${charity.name}, please complete your Charity Account Registration. One of your donations is waiting.`,
@@ -577,14 +577,14 @@ const processOrderDelivery = (orderId) => __awaiter(void 0, void 0, void 0, func
                 }
                 else if (!charity.email) {
                     // Notify the admin if the charity doesn't have an email address
-                    yield (0, email_ts_1.sendEmail)({
+                    yield (0, email_1.sendEmail)({
                         to: process.env.ADMIN_EMAIL,
                         subject: `Charity ${charity.name} is missing email address`,
                         text: `Charity Name: ${charity.name}, Phone: ${charity.phoneNumber}, Address: ${charity.addresses[0].address},${charity.addresses[0].postcode},${charity.addresses[0].city},${charity.addresses[0].country} does not have an email address on file. Please contact them to complete their registration process, including Stripe account setup.`,
                     });
                 }
                 else {
-                    yield (0, email_ts_1.sendEmail)({
+                    yield (0, email_1.sendEmail)({
                         to: charity.email,
                         subject: "Funds Awaiting on Upcoming fund area",
                         text: `Dear ${charity.charityName}, your funds have been awaiting to your held balance after 7 days of payment confirmation it will moved to held fund area for awaiting admin approval.`,
@@ -618,14 +618,14 @@ const automaticMoveToHeldFunds = () => __awaiter(void 0, void 0, void 0, functio
             console.log(`Moved £${charity.upcomingFunds} to totalHeldFunds for charity ${charity.charityName}`);
             // Optionally, you can also send an email to notify the charity about the fund release
             if (!charity.registrationStatus === "REGISTERED") {
-                yield (0, email_ts_1.sendEmail)({
+                yield (0, email_1.sendEmail)({
                     to: charity.email,
                     subject: "Complete Account Registration on AngelPage",
                     text: `Dear ${charity.name}, please complete your Charity Account Registration. One of your donations is waiting for admin approval.`,
                 });
             }
             else if (!charity.stripeAccountId) {
-                yield (0, email_ts_1.sendEmail)({
+                yield (0, email_1.sendEmail)({
                     to: charity.email,
                     subject: "Complete Your Charity Profile on AngelPage",
                     text: `Dear ${charity.name}, please complete your profile and set up your Stripe account to receive your funds. One of your donations is waiting for admin approval.`,
@@ -633,14 +633,14 @@ const automaticMoveToHeldFunds = () => __awaiter(void 0, void 0, void 0, functio
             }
             else if (!charity.email) {
                 // Notify the admin if the charity doesn't have an email address
-                yield (0, email_ts_1.sendEmail)({
+                yield (0, email_1.sendEmail)({
                     to: process.env.ADMIN_EMAIL,
                     subject: `Charity ${charity.name} is missing email address`,
                     text: `Charity Name: ${charity.name}, Phone: ${charity.phoneNumber}, Address: ${charity.addresses[0].address},${charity.addresses[0].postcode},${charity.addresses[0].city},${charity.addresses[0].country} does not have an email address on file. Please contact them to complete their registration process, including Stripe account setup.`,
                 });
             }
             else {
-                yield (0, email_ts_1.sendEmail)({
+                yield (0, email_1.sendEmail)({
                     to: charity.email,
                     subject: "Funds Moved to Held Funds",
                     text: `Dear ${charity.charityName}, your funds have been moved to your held balance after 7 days of payment confirmation.`,
@@ -674,7 +674,7 @@ const approveFundsRelease = (req, res) => __awaiter(void 0, void 0, void 0, func
     // Check if charity has an email address
     if (!charity.email) {
         // Notify admin if charity doesn't have an email address
-        yield (0, email_ts_1.sendEmail)({
+        yield (0, email_1.sendEmail)({
             to: process.env.ADMIN_EMAIL,
             subject: `Charity ${charity.name} is missing email address`,
             text: `Charity Name: ${charity.name}, Phone: ${charity.phoneNumber}, Address: ${charity.addresses[0].address}, ${charity.addresses[0].postcode}, ${charity.addresses[0].city}, ${charity.addresses[0].country} does not have an email address on file. Please contact them to complete their registration process, including Stripe account setup.`,
@@ -695,7 +695,7 @@ const approveFundsRelease = (req, res) => __awaiter(void 0, void 0, void 0, func
         charity.adminConfirmed = true;
         yield charity.save();
         // Optionally, send email notifications here
-        yield (0, email_ts_1.sendEmail)({
+        yield (0, email_1.sendEmail)({
             to: charity.email,
             subject: "Funds Released to Your Account",
             text: `Dear ${charity.name}, your funds have been released to your Stripe account.`,
@@ -737,7 +737,7 @@ const releaseFunds = (charity) => __awaiter(void 0, void 0, void 0, function* ()
         }
         if (!charity.email) {
             // Notify admin about missing email
-            yield (0, email_ts_1.sendEmail)({
+            yield (0, email_1.sendEmail)({
                 to: process.env.ADMIN_EMAIL,
                 subject: `Charity ${charity.name} is missing email address`,
                 text: `Charity Name: ${charity.name} does not have an email address on file. Please contact them to complete their registration process, including Stripe account setup.`,
@@ -754,7 +754,7 @@ const releaseFunds = (charity) => __awaiter(void 0, void 0, void 0, function* ()
         charity.totalHeldFunds = 0;
         yield charity.save();
         // Optionally, send email notifications here
-        yield (0, email_ts_1.sendEmail)({
+        yield (0, email_1.sendEmail)({
             to: charity.email,
             subject: "Funds Released to Your Account",
             text: `Dear ${charity.name}, your funds have been released to your Stripe account.`,
@@ -863,7 +863,7 @@ const sendStripeMissingInfoEmail = (charity, onboardingUrl) => __awaiter(void 0,
   `;
     try {
         // Send email to charity
-        yield (0, email_ts_1.sendEmail)({
+        yield (0, email_1.sendEmail)({
             to: charity.email,
             subject: 'Action Required: Complete Your Stripe Account Onboarding',
             text: message,
@@ -883,7 +883,7 @@ const sendStripeMissingInfoEmail = (charity, onboardingUrl) => __awaiter(void 0,
         Best regards,
         Your Team
       `;
-            yield (0, email_ts_1.sendEmail)({
+            yield (0, email_1.sendEmail)({
                 to: process.env.ADMIN_EMAIL,
                 subject: `Charity Missing Information: ${charity.charityName}`,
                 text: adminMessage,
