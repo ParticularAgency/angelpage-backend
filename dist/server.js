@@ -67,50 +67,60 @@ const socket_io_1 = require("socket.io");
 const dotenv_1 = __importDefault(require("dotenv"));
 const cors_1 = __importDefault(require("cors"));
 const body_parser_1 = __importDefault(require("body-parser"));
-const database_1 = __importDefault(require("./config/database")); // Your DB connection logic
+const database_1 = __importDefault(require("./config/database")); // Your MongoDB connection logic
 const routes_1 = __importDefault(require("./routes")); // Your API routes
 const error_middleware_1 = __importDefault(require("./middlewares/error.middleware")); // Error handling middleware
 dotenv_1.default.config();
 const app = (0, express_1.default)();
-const server = http_1.default.createServer(app); // Create an HTTP server to work with Socket.IO
+const server = http_1.default.createServer(app);
+// ✅ CORS Configuration (Fixes Mac/iOS Issues)
+app.use((0, cors_1.default)({
+    origin: process.env.FRONTEND_BASE_URL || 'http://localhost:3000', // Allow frontend domain
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true, // Allow cookies if necessary
+}));
+app.options('*', (0, cors_1.default)()); // Handle preflight requests
+// ✅ Middleware
+app.use(body_parser_1.default.json());
+app.use(body_parser_1.default.urlencoded({ extended: true }));
+// ✅ Connect to MongoDB
+(0, database_1.default)();
+// ✅ Setup Socket.IO with CORS
 const io = new socket_io_1.Server(server, {
     cors: {
-        origin: process.env.FRONTEND_BASE_URL || "http://localhost:3000", // Allow frontend URL
-        methods: ["GET", "POST", "PUT", "DELETE"],
-        credentials: true, // Allow cookies if necessary
+        origin: process.env.FRONTEND_BASE_URL || 'http://localhost:3000',
+        methods: ['GET', 'POST', 'PUT', 'DELETE'],
+        credentials: true,
     },
 });
-// Middleware Setup
-app.use((0, cors_1.default)());
-app.use(body_parser_1.default.json()); // Parse JSON bodies
-app.use(body_parser_1.default.urlencoded({ extended: true })); // Parse URL-encoded bodies
-// Connect to MongoDB
-(0, database_1.default)();
-io.on("connection", (socket) => {
-    console.log("A user connected");
-    socket.on("new-notification", (data) => {
-        console.log("New notification received:", data);
+// ✅ Socket.IO Events
+io.on('connection', socket => {
+    console.log('A user connected');
+    socket.on('new-notification', data => {
+        console.log('New notification received:', data);
     });
-    socket.on("disconnect", () => {
-        console.log("User disconnected");
+    socket.on('disconnect', () => {
+        console.log('User disconnected');
     });
 });
-// Basic route for health check
-app.get("/", (req, res) => {
-    res.send("Backend server is running!");
+// ✅ Health Check Route
+app.get('/', (req, res) => {
+    res.send('✅ Backend server is running!');
 });
-// API Routes
-app.use("/api", routes_1.default);
-// Catch-all route for 404
+// ✅ API Routes (Ensure Your Frontend Calls `/api/products/create`)
+app.use('/api', routes_1.default);
+// ✅ Debugging for Incorrect API Calls
 app.use((req, res) => {
+    console.log(`🚨 API Not Found: ${req.method} ${req.originalUrl}`);
     res.status(404).json({
         success: false,
-        message: "API endpoint not found",
+        message: 'API endpoint not found',
     });
 });
-// Error handling middleware
-app.use(error_middleware_1.default); // Add error handling middleware
-// Start the server
+// ✅ Error Handling Middleware
+app.use(error_middleware_1.default);
+// ✅ Start the Server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
     console.log(`✅ Server running on http://localhost:${PORT}`);

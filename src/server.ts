@@ -70,69 +70,83 @@
 // });
 
 // server.js
-import express from "express";
-import http from "http";
-import { Server, Socket } from "socket.io";
-import dotenv from "dotenv";
-import cors from "cors";
-import bodyParser from "body-parser";
-import connectDB from "./config/database"; // Your DB connection logic
-import routes from "./routes"; // Your API routes
-import errorHandler from "./middlewares/error.middleware"; // Error handling middleware
+import express from 'express';
+import http from 'http';
+import { Server } from 'socket.io';
+import dotenv from 'dotenv';
+import cors from 'cors';
+import bodyParser from 'body-parser';
+import connectDB from './config/database'; // Your MongoDB connection logic
+import routes from './routes'; // Your API routes
+import errorHandler from './middlewares/error.middleware'; // Error handling middleware
 
 dotenv.config();
 
 const app = express();
-const server = http.createServer(app); // Create an HTTP server to work with Socket.IO
-const io = new Server(server, {
-	cors: {
-		origin: process.env.FRONTEND_BASE_URL || "http://localhost:3000", // Allow frontend URL
-		methods: ["GET", "POST", "PUT", "DELETE"],
-		credentials: true, // Allow cookies if necessary
-	},
-});
+const server = http.createServer(app);
 
-// Middleware Setup
-app.use(cors());
-app.use(bodyParser.json()); // Parse JSON bodies
-app.use(bodyParser.urlencoded({ extended: true })); // Parse URL-encoded bodies
+// ✅ CORS Configuration (Fixes Mac/iOS Issues)
+app.use(
+  cors({
+    origin: process.env.FRONTEND_BASE_URL || 'http://localhost:3000', // Allow frontend domain
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+    credentials: true, // Allow cookies if necessary
+  })
+);
+app.options('*', cors()); // Handle preflight requests
 
-// Connect to MongoDB
+// ✅ Middleware
+app.use(bodyParser.json());
+app.use(bodyParser.urlencoded({ extended: true }));
+
+// ✅ Connect to MongoDB
 connectDB();
 
-io.on("connection", (socket: Socket) => {
-	console.log("A user connected");
-
-	socket.on("new-notification", (data: any) => {
-		console.log("New notification received:", data);
-	});
-
-	socket.on("disconnect", () => {
-		console.log("User disconnected");
-	});
+// ✅ Setup Socket.IO with CORS
+const io = new Server(server, {
+  cors: {
+    origin: process.env.FRONTEND_BASE_URL || 'http://localhost:3000',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true,
+  },
 });
 
-// Basic route for health check
-app.get("/", (req, res) => {
-	res.send("Backend server is running!");
+// ✅ Socket.IO Events
+io.on('connection', socket => {
+  console.log('A user connected');
+
+  socket.on('new-notification', data => {
+    console.log('New notification received:', data);
+  });
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected');
+  });
 });
 
-// API Routes
-app.use("/api", routes);
+// ✅ Health Check Route
+app.get('/', (req, res) => {
+  res.send('✅ Backend server is running!');
+});
 
-// Catch-all route for 404
+// ✅ API Routes (Ensure Your Frontend Calls `/api/products/create`)
+app.use('/api', routes);
+
+// ✅ Debugging for Incorrect API Calls
 app.use((req, res) => {
-	res.status(404).json({
-		success: false,
-		message: "API endpoint not found",
-	});
+  console.log(`🚨 API Not Found: ${req.method} ${req.originalUrl}`);
+  res.status(404).json({
+    success: false,
+    message: 'API endpoint not found',
+  });
 });
 
-// Error handling middleware
-app.use(errorHandler); // Add error handling middleware
+// ✅ Error Handling Middleware
+app.use(errorHandler);
 
-// Start the server
+// ✅ Start the Server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
-	console.log(`✅ Server running on http://localhost:${PORT}`);
+  console.log(`✅ Server running on http://localhost:${PORT}`);
 });
