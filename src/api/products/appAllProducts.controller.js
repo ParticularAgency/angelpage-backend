@@ -694,7 +694,7 @@ export const getCharityProducts = async (req, res) => {
             pages: Math.ceil((count || 0) / limitNum),
             count: products?.length || 0,
             products: products || [],
-            facets: {
+            filters: {
                 categories: Object.entries(categoryFacet).map(([k, v]) => ({
                     categoryName: k,
                     count: v,

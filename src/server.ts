@@ -129,7 +129,19 @@ io.on('connection', socket => {
 app.get('/', (req, res) => {
   res.send('✅ Backend server is running!');
 });
+// ✅ Public Route: Charity Products (open CORS + caching)
+import productsRoutes from "./api/products/products.routes.js";
 
+app.use(
+  "/api/products/all-charity-products",
+  cors({ origin: "*", methods: ["GET"] }), // 🔓 Public CORS override
+  (req, res, next) => {
+    // ⏱ Add caching headers (1 hour)
+    res.set("Cache-Control", "public, max-age=3600, s-maxage=3600");
+    next();
+  },
+  productsRoutes
+);
 // ✅ API Routes (Ensure Your Frontend Calls `/api/products/create`)
 app.use('/api', routes);
 
