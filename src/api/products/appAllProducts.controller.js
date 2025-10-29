@@ -611,12 +611,12 @@
 //         });
 //     }
 // };
-import CharityProduct from "../../models/CharityProduct.model.js";
+import { supabase } from "../../config/supabaseClient.js";
 
 /**
- * @desc Get charity products (with pagination, filters, nested category search, and text search)
- * @route GET /api/charity-products
- * @query page, limit, category, categoryId, minPrice, maxPrice, brand, search
+ * @desc Get charity products (pagination, filters, search, and seller)
+ * @route GET /api/products/all-charity-products
+ * @query page, limit, category, categoryId, minPrice, maxPrice, brand, search, seller
  */
 export const getCharityProducts = async (req, res) => {
     try {
@@ -629,135 +629,85 @@ export const getCharityProducts = async (req, res) => {
             maxPrice,
             brand,
             search,
+            seller,
         } = req.query;
 
         const pageNum = parseInt(page, 10);
         const limitNum = limit ? parseInt(limit, 10) : 20;
+        const offset = (pageNum - 1) * limitNum;
 
-        const match = {};
+        let query = supabase
+            .from("charity_products")
+            .select("*", { count: "exact" })
+            .range(offset, offset + limitNum - 1)
+            .order("updated_at", { ascending: false });
 
-        // 🧩 CATEGORY FILTERS
-        if (category || categoryId) {
-            match.$or = [];
+        // 🧩 Filters
+        if (category)
+            query = query.ilike("category", `%${category}%`);
+        if (brand)
+            query = query.ilike("brand", `%${brand}%`);
+        if (seller)
+            query = query.ilike("charity_seller", `%${seller}%`);
+        if (minPrice)
+            query = query.gte("price", parseFloat(minPrice));
+        if (maxPrice)
+            query = query.lte("price", parseFloat(maxPrice));
+        if (search)
+            query = query.or(
+                `title.ilike.%${search}%,brand.ilike.%${search}%,category.ilike.%${search}%,charity_seller.ilike.%${search}%`
+            );
 
-            if (category) {
-                // Match category field or any categories[].categoryName
-                match.$or.push({ category: { $regex: new RegExp(category, "i") } });
-                match.$or.push({
-                    "categories.categoryName": { $regex: new RegExp(category, "i") },
-                });
+        const { data: products, count, error } = await query;
+        if (error) throw error;
+
+        // 🧮 Facet building
+        const { data: allData } = await supabase
+            .from("charity_products")
+            .select("category,brand,price");
+
+        const categoryFacet = {};
+        const brandFacet = {};
+        const priceRange = { minPrice: null, maxPrice: null };
+
+        for (const item of allData || []) {
+            if (item.category)
+                categoryFacet[item.category] = (categoryFacet[item.category] || 0) + 1;
+            if (item.brand)
+                brandFacet[item.brand] = (brandFacet[item.brand] || 0) + 1;
+            if (item.price) {
+                priceRange.minPrice =
+                    priceRange.minPrice === null
+                        ? item.price
+                        : Math.min(priceRange.minPrice, item.price);
+                priceRange.maxPrice =
+                    priceRange.maxPrice === null
+                        ? item.price
+                        : Math.max(priceRange.maxPrice, item.price);
             }
-
-            if (categoryId) {
-                // Match categoryId in nested categories[]
-                match.$or.push({
-                    "categories.categoryId": categoryId,
-                });
-            }
         }
-
-        // 🏷 BRAND FILTER
-        if (brand) {
-            match.brand = { $regex: new RegExp(brand, "i") };
-        }
-
-        // 💰 PRICE RANGE FILTER
-        if (minPrice || maxPrice) {
-            match.price = {};
-            if (minPrice) match.price.$gte = parseFloat(minPrice);
-            if (maxPrice) match.price.$lte = parseFloat(maxPrice);
-        }
-
-        // 🔍 TEXT SEARCH (title, brand, category)
-        if (search) {
-            match.$text = { $search: search };
-        }
-
-        // 🚀 FACET AGGREGATION PIPELINE
-        const results = await CharityProduct.aggregate([
-            { $match: match },
-            ...(search
-                ? [{ $sort: { score: { $meta: "textScore" } } }]
-                : [{ $sort: { updatedAt: -1 } }]),
-            {
-                $facet: {
-                    products: [
-                        { $skip: (pageNum - 1) * limitNum },
-                        { $limit: limitNum },
-                        {
-                            $project: {
-                                _id: 0,
-                                itemId: 1,
-                                charitySeller: 1,
-                                title: 1,
-                                price: 1,
-                                currency: 1,
-                                image: 1,
-                                thumbnailImages: 1,
-                                additionalImages: 1,
-                                categories: 1,
-                                category: 1,
-                                condition: 1,
-                                brand: 1,
-                                seller: 1,
-                                buyingOptions: 1,
-                                shippingOptions: 1,
-                                itemLocation: 1,
-                                affiliateUrl: 1,
-                                updatedAt: 1,
-                                ...(search ? { score: { $meta: "textScore" } } : {}),
-                            },
-                        },
-                    ],
-                    totalCount: [{ $count: "count" }],
-                    categoryFacet: [
-                        { $unwind: "$categories" },
-                        {
-                            $group: {
-                                _id: "$categories.categoryName",
-                                categoryId: { $first: "$categories.categoryId" },
-                                count: { $sum: 1 },
-                            },
-                        },
-                        { $sort: { count: -1 } },
-                        { $limit: 100 },
-                    ],
-                    brandFacet: [
-                        { $group: { _id: "$brand", count: { $sum: 1 } } },
-                        { $sort: { count: -1 } },
-                        { $limit: 100 },
-                    ],
-                    priceRange: [
-                        {
-                            $group: {
-                                _id: null,
-                                minPrice: { $min: "$price" },
-                                maxPrice: { $max: "$price" },
-                            },
-                        },
-                    ],
-                },
-            },
-        ]);
-
-        const facet = results[0] || {};
-        const total = facet.totalCount?.[0]?.count || 0;
 
         res.json({
             success: true,
-            total,
+            total: count || 0,
             page: pageNum,
-            pages: Math.ceil(total / limitNum),
-            count: facet.products?.length || 0,
-            products: facet.products || [],
+            pages: Math.ceil((count || 0) / limitNum),
+            count: products?.length || 0,
+            products: products || [],
             facets: {
-                categories: facet.categoryFacet || [],
-                brands: facet.brandFacet || [],
-                priceRange: facet.priceRange?.[0] || {},
+                categories: Object.entries(categoryFacet).map(([k, v]) => ({
+                    categoryName: k,
+                    count: v,
+                })),
+                brands: Object.entries(brandFacet).map(([k, v]) => ({
+                    brand: k,
+                    count: v,
+                })),
+                priceRange,
             },
         });
     } catch (error) {
-        console.error("❌ Error fetching charity products:", error);
+        console.error("❌ Error fetching charity products:", error.message);
         res.status(500).json({
             success: false,
             message: "Internal server error",

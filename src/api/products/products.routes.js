@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { supabase } from "../../config/supabaseClient.js";
 import multer from "multer";
 import {  getCharityProducts } from "./appAllProducts.controller";
 import {

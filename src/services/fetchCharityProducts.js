@@ -744,12 +744,12 @@
 // })();
 
 /* eslint-env node */
-import mongoose from 'mongoose';
+// import mongoose from 'mongoose';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 import https from 'https';
-import Charity from '../models/CharityShop.model';
-import CharityProduct from '../models/CharityProduct.model';
+import { bulkUpsertCharityProducts } from "../models/CharityProduct.supabase.js";
+import { upsertCharityShop } from "../models/CharityShop.supabase.js";
 
 dotenv.config();
 
@@ -859,8 +859,12 @@ const CATEGORY_FILTER_MAP = {
     "Women's Footwear",
     "Books",
     "Vintage Clothing",
+    "Vintage",
+    "Clothing",
     "Health & Beauty",
-     "Dolls & Bears",
+    "Health",
+    "Beauty",
+    "Dolls & Bears",
     "Featured categories",
     "Fine Jewellery",
     "Antiques & Collectables",
@@ -885,10 +889,23 @@ const CATEGORY_FILTER_MAP = {
     "Ladies Shoes",
     "Collectable & Vintage",
     "Home & Leisure",
+    'Women',
+    'Men',
+    'Kids',
+    'Shoes',
+    'Bags',
+    'Jewellery',
+    'Books',
+    'Home',
+    'Furniture',
+    'Electronics',
+    'Beauty',
+    'Sports',
+    'Collectables',
+    'Toys',
+    'DVD',
+    'Health',
     ],
-  Furniture: ['Furniture'],
-  /* -------------------- 💎 Collectables -------------------- */
-  Collectables: ['Collectables'],
 
   /* -------------------- 📚 Books, Comics & Magazines -------------------- */
   Books: [
@@ -1253,33 +1270,24 @@ function inferCategory(title){
 
 
 /* ---------------------------------------------
-   🔁 Safe Fetch with Retry + Type
+   🔁 Safe Fetch with Retry
 --------------------------------------------- */
-/* ---------------------------------------------
-   🔁 Safe Fetch with Retry + Type (Fixed)
---------------------------------------------- */
-async function fetchWithRetry(
-  url,
-  options,
-  retries = 4,
-  delay = 5000
-) {
+async function fetchWithRetry(url, options, retries = 4, delay = 5000) {
   for (let i = 0; i < retries; i++) {
     try {
-      // 👇 Type cast here to bypass body:null + agent typing mismatch
-      const res = await fetch(url, { ...(options), agent });
+      const res = await fetch(url, { ...options, agent });
       if (res.status === 429 || res.status === 503) {
         console.warn(`⚠️ Rate-limited (${res.status}). Retrying in ${delay / 1000}s...`);
-        await new Promise(r => setTimeout(r, delay));
+        await new Promise((r) => setTimeout(r, delay));
         continue;
       }
       return res;
     } catch (err) {
       console.warn(`⚠️ Network error: ${err.message}. Retrying in ${delay / 1000}s...`);
-      await new Promise(r => setTimeout(r, delay));
+      await new Promise((r) => setTimeout(r, delay));
     }
   }
-  throw new Error('❌ Too many fetch failures.');
+  throw new Error("❌ Too many fetch failures.");
 }
 
 /* ---------------------------------------------
@@ -1336,9 +1344,10 @@ const res = await fetchWithRetry(url, {
       thumbnailImages: (p.thumbnailImages || []).map((t) => t.imageUrl),
       additionalImages: (p.additionalImages || []).map((a) => a.imageUrl),
       categories: p.categories || [],
-      category: cat,
-      condition: p.condition || 'Unknown',
-      brand: p.brand || 'Unknown',
+      category:
+        p.categories?.[p.categories.length - 1]?.categoryName || categoryKeyword || "Other",
+      condition: p.condition || "Unknown",
+      brand: p.brand || "Unknown",
       seller: p.seller || {},
       buyingOptions: p.buyingOptions || [],
       shippingOptions: p.shippingOptions || [],
@@ -1350,81 +1359,60 @@ const res = await fetchWithRetry(url, {
 }
 
 /* ---------------------------------------------
-   🧱 Fetch + Upsert Charity Products
+   🧱 Fetch + Upsert into Supabase
 --------------------------------------------- */
-async function fetchCharityIncremental(sellerId, charityId) {
-  console.log(`\n🎯 Fetching categories for seller: ${sellerId}`);
+async function fetchCharitySupabase(sellerId, charityId) {
+  console.log(`\n🎯 Fetching products for seller: ${sellerId}`);
   let allProducts = [];
 
-
-  for (const [mainCategory, subCategories] of Object.entries(
-    CATEGORY_FILTER_MAP
-  )) {
-    console.log(`\n🗂️ Category group: ${mainCategory}`);
+  for (const [groupName, subCategories] of Object.entries(CATEGORY_FILTER_MAP)) {
+    console.log(`🗂️ Category group: ${groupName}`);
     for (const sub of subCategories) {
       const products = await fetchCategoryProducts(sellerId, charityId, sub);
       allProducts.push(...products);
-      console.log(`✅ ${products.length} products fetched for ${sub}`);
-      await new Promise(r => setTimeout(r, 4000));
+      console.log(`✅ ${products.length} fetched for ${sub}`);
+      await new Promise((r) => setTimeout(r, 3000)); // small delay
     }
   }
 
-  const uniqueProducts = Array.from(
-    new Map(allProducts.map(p => [p.itemId, p])).values()
-  );
-  console.log(
-    `📦 Total unique products for ${sellerId}: ${uniqueProducts.length}`
-  );
+  const uniqueProducts = Array.from(new Map(allProducts.map((p) => [p.itemId, p])).values());
+  console.log(`📦 Total unique: ${uniqueProducts.length}`);
 
-  await Charity.findOneAndUpdate(
-    { seller: sellerId },
-    {
-      $set: {
-        seller: sellerId,
-        userName: sellerId,
-        totalProducts: uniqueProducts.length,
-        lastUpdated: new Date(),
-      },
-    },
-    { upsert: true, new: true }
-  );
+  // 🏪 Upsert charity shop FIRST (avoid FK constraint)
+  await upsertCharityShop({
+    seller: sellerId,
+    userName: sellerId,
+    totalProducts: uniqueProducts.length,
+  });
 
-  for (const product of uniqueProducts) {
-    await CharityProduct.findOneAndUpdate(
-      { itemId: product.itemId },
-      { $set: product },
-      { upsert: true, new: true }
-    );
-  }
+  // 💾 Then upsert products
+  await bulkUpsertCharityProducts(uniqueProducts);
 
-  console.log(`💾 Upserted ${uniqueProducts.length} products for ${sellerId}`);
+  console.log(`🎉 Saved ${uniqueProducts.length} products for ${sellerId}`);
 }
+
 
 /* ---------------------------------------------
    🏁 Sequential Runner
 --------------------------------------------- */
 (async () => {
-  await mongoose.connect(MONGO_URI);
-  console.log('✅ Connected to MongoDB');
+  console.log("✅ Starting charity product fetch (Supabase mode)...");
 
   for (const charity of PRE_SELECTED) {
     if (!charity.seller || !charity.charity_ids) {
-      console.log(
-        `⚠️ Skipping ${charity.name} (missing seller or charity ID).`
-      );
+      console.log(`⚠️ Skipping ${charity.name} (missing seller/charity ID)`);
       continue;
     }
 
     try {
-      await fetchCharityIncremental(charity.seller, charity.charity_ids);
+      await fetchCharitySupabase(charity.seller, charity.charity_ids);
     } catch (err) {
-      console.error(`❌ Failed for ${charity.name}:`, err);
+      console.error(`❌ Failed for ${charity.name}: ${err.message}`);
     }
 
-    console.log(`⏳ Waiting 15 seconds before next charity...\n`);
-    await new Promise(r => setTimeout(r, 15000));
+    console.log(`⏳ Waiting 15s before next charity...\n`);
+    await new Promise((r) => setTimeout(r, 15000));
   }
 
-  console.log('🎉 All charities processed successfully!');
-  await mongoose.connection.close();
+  console.log("🏁 Done fetching all charity products (Supabase).");
 })();
