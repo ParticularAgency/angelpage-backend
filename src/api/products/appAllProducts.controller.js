@@ -552,10 +552,69 @@
 //         res.status(500).json({ error: "Failed to fetch charity products" });
 //     }
 // };
+// import CharityProduct from "../../models/CharityProduct.model";
+
+// /**
+//  * @desc Get charity products (with pagination + filters)
+//  * @route GET /api/charity-products
+//  * @query page, limit, category, minPrice, maxPrice
+//  */
+// export const getCharityProducts = async (req, res) => {
+//     try {
+//         const {
+//             page = "1",
+//             limit,
+//             category,
+//             minPrice,
+//             maxPrice,
+//         } = req.query;
+
+//         const query = {};
+
+//         // 🧩 Filters
+//         if (category) query.category = category;
+//         if (minPrice || maxPrice) {
+//             query.price = {};
+//             if (minPrice) query.price.$gte = parseFloat(minPrice);
+//             if (maxPrice) query.price.$lte = parseFloat(maxPrice);
+//         }
+
+//         // 🧮 Pagination
+//         const pageNum = parseInt(page, 10);
+//         const limitNum = limit ? parseInt(limit, 10) : 0; // 0 = show all
+
+//         // Count total docs for pagination info
+//         const totalCount = await CharityProduct.countDocuments(query);
+
+//         // Query builder
+//         const productsQuery = CharityProduct.find(query).sort({ updatedAt: -1 });
+
+//         if (limitNum > 0) {
+//             productsQuery.skip((pageNum - 1) * limitNum).limit(limitNum);
+//         }
+
+//         const products = await productsQuery.exec();
+
+//         res.json({
+//             success: true,
+//             total: totalCount,
+//             page: limitNum > 0 ? pageNum : 1,
+//             pages: limitNum > 0 ? Math.ceil(totalCount / limitNum) : 1,
+//             count: products.length,
+//             products,
+//         });
+//     } catch (error) {
+//         console.error("❌ Error fetching charity products:", error);
+//         res.status(500).json({
+//             success: false,
+//             message: "Internal server error",
+//         });
+//     }
+// };
 import CharityProduct from "../../models/CharityProduct.model";
 
 /**
- * @desc Get charity products (with pagination + filters)
+ * @desc Get charity products (with pagination, filters, and facets)
  * @route GET /api/charity-products
  * @query page, limit, category, minPrice, maxPrice
  */
@@ -567,41 +626,84 @@ export const getCharityProducts = async (req, res) => {
             category,
             minPrice,
             maxPrice,
+            brand,
         } = req.query;
 
-        const query = {};
+        const pageNum = parseInt(page, 10);
+        const limitNum = limit ? parseInt(limit, 10) : 20;
+
+        const match = {};
 
         // 🧩 Filters
-        if (category) query.category = category;
+        if (category) match.category = category;
+        if (brand) match.brand = brand;
         if (minPrice || maxPrice) {
-            query.price = {};
-            if (minPrice) query.price.$gte = parseFloat(minPrice);
-            if (maxPrice) query.price.$lte = parseFloat(maxPrice);
+            match.price = {};
+            if (minPrice) match.price.$gte = parseFloat(minPrice);
+            if (maxPrice) match.price.$lte = parseFloat(maxPrice);
         }
 
-        // 🧮 Pagination
-        const pageNum = parseInt(page, 10);
-        const limitNum = limit ? parseInt(limit, 10) : 0; // 0 = show all
+        // 🚀 Aggregation with facets
+        const results = await CharityProduct.aggregate([
+            { $match: match },
+            {
+                $facet: {
+                    products: [
+                        { $sort: { updatedAt: -1 } },
+                        { $skip: (pageNum - 1) * limitNum },
+                        { $limit: limitNum },
+                        {
+                            $project: {
+                                itemId: 1,
+                                title: 1,
+                                price: 1,
+                                currency: 1,
+                                category: 1,
+                                brand: 1,
+                                image: 1,
+                                affiliateUrl: 1,
+                                charitySeller: 1,
+                                updatedAt: 1,
+                            },
+                        },
+                    ],
+                    totalCount: [{ $count: "count" }],
+                    categoryFacet: [
+                        { $group: { _id: "$category", count: { $sum: 1 } } },
+                        { $sort: { count: -1 } },
+                    ],
+                    brandFacet: [
+                        { $group: { _id: "$brand", count: { $sum: 1 } } },
+                        { $sort: { count: -1 } },
+                    ],
+                    priceRange: [
+                        {
+                            $group: {
+                                _id: null,
+                                minPrice: { $min: "$price" },
+                                maxPrice: { $max: "$price" },
+                            },
+                        },
+                    ],
+                },
+            },
+        ]);
 
-        // Count total docs for pagination info
-        const totalCount = await CharityProduct.countDocuments(query);
-
-        // Query builder
-        const productsQuery = CharityProduct.find(query).sort({ updatedAt: -1 });
-
-        if (limitNum > 0) {
-            productsQuery.skip((pageNum - 1) * limitNum).limit(limitNum);
-        }
-
-        const products = await productsQuery.exec();
+        const facet = results[0];
+        const total = facet.totalCount[0]?.count || 0;
 
         res.json({
             success: true,
-            total: totalCount,
-            page: limitNum > 0 ? pageNum : 1,
-            pages: limitNum > 0 ? Math.ceil(totalCount / limitNum) : 1,
-            count: products.length,
-            products,
+            total,
+            page: pageNum,
+            pages: Math.ceil(total / limitNum),
+            count: facet.products.length,
+            products: facet.products,
+            facets: {
+                categories: facet.categoryFacet,
+                brands: facet.brandFacet,
+                priceRange: facet.priceRange[0] || {},
+            },
         });
     } catch (error) {
         console.error("❌ Error fetching charity products:", error);
