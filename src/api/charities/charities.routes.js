@@ -1,7 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { authMiddleware } from "../../middlewares/auth.middleware";
-
+import { getCharities } from "./appCharity.controller.js";
 import {
 	updateProfile,
 	getCharityProfile,
@@ -73,6 +73,7 @@ router.put("/funds/release/:charityId", approveFundsRelease)
 
 router.post("/upload-charities", uploadMiddleware, uploadCharityList);
 
-
+// ============eBay charity lists
+router.get("/charity-lists", getCharities);
 
 export default router;

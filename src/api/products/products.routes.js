@@ -1,5 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
+import {  getCharityProducts } from "./appAllProducts.controller";
 import {
 	createProduct,
 	editProduct,
@@ -75,7 +76,7 @@ router.get("/listings", authMiddleware(), getRoleBasedListings);
 // Permanently delete a product by ID
 router.delete("/:productId", authMiddleware(), deleteProduct);
 
-
-
-
+// =====eBay charity products
+// router.get("/:seller", getProductsBySeller);
+router.get("/all-charity-products", getCharityProducts);
 export default router;
