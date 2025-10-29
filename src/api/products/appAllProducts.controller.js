@@ -611,12 +611,12 @@
 //         });
 //     }
 // };
-import CharityProduct from "../../models/CharityProduct.model";
+import CharityProduct from "../../models/CharityProduct.model.js";
 
 /**
- * @desc Get charity products (with pagination, filters, and facets)
+ * @desc Get charity products (with pagination, filters, nested category search, and text search)
  * @route GET /api/charity-products
- * @query page, limit, category, minPrice, maxPrice
+ * @query page, limit, category, categoryId, minPrice, maxPrice, brand, search
  */
 export const getCharityProducts = async (req, res) => {
     try {
@@ -624,9 +624,11 @@ export const getCharityProducts = async (req, res) => {
             page = "1",
             limit,
             category,
+            categoryId,
             minPrice,
             maxPrice,
             brand,
+            search,
         } = req.query;
 
         const pageNum = parseInt(page, 10);
@@ -634,47 +636,96 @@ export const getCharityProducts = async (req, res) => {
 
         const match = {};
 
-        // 🧩 Filters
-        if (category) match.category = category;
-        if (brand) match.brand = brand;
+        // 🧩 CATEGORY FILTERS
+        if (category || categoryId) {
+            match.$or = [];
+
+            if (category) {
+                // Match category field or any categories[].categoryName
+                match.$or.push({ category: { $regex: new RegExp(category, "i") } });
+                match.$or.push({
+                    "categories.categoryName": { $regex: new RegExp(category, "i") },
+                });
+            }
+
+            if (categoryId) {
+                // Match categoryId in nested categories[]
+                match.$or.push({
+                    "categories.categoryId": categoryId,
+                });
+            }
+        }
+
+        // 🏷 BRAND FILTER
+        if (brand) {
+            match.brand = { $regex: new RegExp(brand, "i") };
+        }
+
+        // 💰 PRICE RANGE FILTER
         if (minPrice || maxPrice) {
             match.price = {};
             if (minPrice) match.price.$gte = parseFloat(minPrice);
             if (maxPrice) match.price.$lte = parseFloat(maxPrice);
         }
 
-        // 🚀 Aggregation with facets
+        // 🔍 TEXT SEARCH (title, brand, category)
+        if (search) {
+            match.$text = { $search: search };
+        }
+
+        // 🚀 FACET AGGREGATION PIPELINE
         const results = await CharityProduct.aggregate([
             { $match: match },
+            ...(search
+                ? [{ $sort: { score: { $meta: "textScore" } } }]
+                : [{ $sort: { updatedAt: -1 } }]),
             {
                 $facet: {
                     products: [
-                        { $sort: { updatedAt: -1 } },
                         { $skip: (pageNum - 1) * limitNum },
                         { $limit: limitNum },
                         {
                             $project: {
+                                _id: 0,
                                 itemId: 1,
+                                charitySeller: 1,
                                 title: 1,
                                 price: 1,
                                 currency: 1,
-                                category: 1,
-                                brand: 1,
                                 image: 1,
+                                thumbnailImages: 1,
+                                additionalImages: 1,
+                                categories: 1,
+                                category: 1,
+                                condition: 1,
+                                brand: 1,
+                                seller: 1,
+                                buyingOptions: 1,
+                                shippingOptions: 1,
+                                itemLocation: 1,
                                 affiliateUrl: 1,
-                                charitySeller: 1,
                                 updatedAt: 1,
+                                ...(search ? { score: { $meta: "textScore" } } : {}),
                             },
                         },
                     ],
                     totalCount: [{ $count: "count" }],
                     categoryFacet: [
-                        { $group: { _id: "$category", count: { $sum: 1 } } },
+                        { $unwind: "$categories" },
+                        {
+                            $group: {
+                                _id: "$categories.categoryName",
+                                categoryId: { $first: "$categories.categoryId" },
+                                count: { $sum: 1 },
+                            },
+                        },
                         { $sort: { count: -1 } },
+                        { $limit: 100 },
                     ],
                     brandFacet: [
                         { $group: { _id: "$brand", count: { $sum: 1 } } },
                         { $sort: { count: -1 } },
+                        { $limit: 100 },
                     ],
                     priceRange: [
                         {
@@ -689,20 +740,20 @@ export const getCharityProducts = async (req, res) => {
             },
         ]);
 
-        const facet = results[0];
-        const total = facet.totalCount[0]?.count || 0;
+        const facet = results[0] || {};
+        const total = facet.totalCount?.[0]?.count || 0;
 
         res.json({
             success: true,
             total,
             page: pageNum,
             pages: Math.ceil(total / limitNum),
-            count: facet.products.length,
-            products: facet.products,
+            count: facet.products?.length || 0,
+            products: facet.products || [],
             facets: {
-                categories: facet.categoryFacet,
-                brands: facet.brandFacet,
-                priceRange: facet.priceRange[0] || {},
+                categories: facet.categoryFacet || [],
+                brands: facet.brandFacet || [],
+                priceRange: facet.priceRange?.[0] || {},
             },
         });
     } catch (error) {

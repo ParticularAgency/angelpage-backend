@@ -4,9 +4,9 @@ import mongoose from 'mongoose';
 import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 import https from 'https';
-import CharityProduct from '../models/CharityProduct.model';
-import Charity from '../models/CharityShop.model';
-import { getValidToken, startAutoRefresh } from '../utils/ebayAuth'; // adjust path as needed
+import CharityProduct from '../models/CharityProduct.model.js';
+import Charity from '../models/CharityShop.model.js';
+import { getValidToken, startAutoRefresh } from '../utils/ebayAuth.js'; // adjust path as needed
 
 startAutoRefresh(); // automatically renew token in background
 dotenv.config();
@@ -72,29 +72,50 @@ async function fetchWithRetry(
   throw new Error('❌ Too many failed eBay requests.');
 }
 
-// fetch latest 100 items per charity
-async function fetchLatestCharityProducts(charityId, sellerId) {
-  const url = `https://api.ebay.com/buy/browse/v1/item_summary/search?charity_ids=${charityId}&filter=sellers:{${sellerId}}&sort=newlyListed&limit=200`;
-  console.log(`🔍 Fetching latest 100 for ${sellerId}...`);
+// fetch latest products (up to maxLimit, default 500)
+async function fetchLatestCharityProducts(charityId, sellerId, maxLimit = 500) {
+  console.log(`🔍 Fetching up to ${maxLimit} latest for ${sellerId}...`);
 
-const token = await getValidToken();
-const res = await fetchWithRetry(url, {
-  headers: {
-    Authorization: `Bearer ${token}`,
-    'X-EBAY-C-MARKETPLACE-ID': market,
-  },
-});
+  const token = await getValidToken();
+  const pageSize = 200; // eBay max per request
+  const allItems = [];
 
-  if (!res.ok) {
-    const errText = await res.text();
-    console.error(`⚠️ eBay returned ${res.status} for ${sellerId}: ${errText}`);
-    return [];
+  for (let offset = 0; offset < maxLimit; offset += pageSize) {
+    const url = `https://api.ebay.com/buy/browse/v1/item_summary/search?charity_ids=${charityId}&filter=sellers:{${sellerId}}&sort=newlyListed&limit=${pageSize}&offset=${offset}`;
+
+    const res = await fetchWithRetry(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-EBAY-C-MARKETPLACE-ID': market,
+      },
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`⚠️ eBay returned ${res.status} for ${sellerId}: ${errText}`);
+      break; // stop trying if one page fails
+    }
+
+    const data = await res.json();
+    const items = data.itemSummaries || [];
+
+    if (!items.length) {
+      console.log(`ℹ️ No more items found for ${sellerId} (stopped at ${offset})`);
+      break;
+    }
+
+    allItems.push(...items);
+    console.log(`📦 Retrieved ${allItems.length} so far...`);
+
+    // short delay between pages to be kind to eBay
+    await new Promise(r => setTimeout(r, 2000));
+
+    if (allItems.length >= maxLimit) break;
   }
 
-  const data = await res.json();
-  const items = data.itemSummaries || [];
+  console.log(`✅ Fetched ${allItems.length} latest items for ${sellerId}`);
 
-  return items.map((p) => {
+  return allItems.map((p) => {
     const match = p.itemWebUrl?.match(/\/itm\/(\d+)/);
     const itemId = p.itemId || (match ? match[1] : p.title);
     const cleanUrl = match
@@ -109,8 +130,8 @@ const res = await fetchWithRetry(url, {
       price: p.price?.value,
       currency: p.price?.currency,
       image: p.image?.imageUrl,
-      thumbnailImages: p.thumbnailImages?.map((t) => t.imageUrl) || [],
-      additionalImages: p.additionalImages?.map((a) => a.imageUrl) || [],
+      thumbnailImages: p.thumbnailImages?.map(t => t.imageUrl) || [],
+      additionalImages: p.additionalImages?.map(a => a.imageUrl) || [],
       categories: p.categories || [],
       category:
         p.categories?.[p.categories.length - 1]?.categoryName || 'Other',
@@ -126,10 +147,12 @@ const res = await fetchWithRetry(url, {
   });
 }
 
+
 // save and dedupe products
-async function saveUniqueProducts() {
+async function saveUniqueProducts(products) {
   let count = 0;
-  for (const product of product) {
+
+  for (const product of products) {
     await CharityProduct.findOneAndUpdate(
       { itemId: product.itemId },
       { $set: product },
@@ -137,6 +160,7 @@ async function saveUniqueProducts() {
     );
     count++;
   }
+
   console.log(`💾 Upserted ${count} products`);
 }
 

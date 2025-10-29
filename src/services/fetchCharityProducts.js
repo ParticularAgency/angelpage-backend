@@ -754,7 +754,7 @@ import CharityProduct from '../models/CharityProduct.model';
 dotenv.config();
 
 const agent = new https.Agent({ keepAlive: true });
-import { getValidToken, startAutoRefresh } from '../utils/ebayAuth'; // adjust path as needed
+import { getValidToken, startAutoRefresh } from '../utils/ebayAuth.js'; // adjust path as needed
 
 startAutoRefresh(); // automatically renew token in background
 
@@ -818,6 +818,7 @@ const CATEGORY_FILTER_MAP = {
     'Baby Clothing',
     "Women's Clothing",
     'Bags & Handbags',
+    "Women's Bags & Handbags",
     "Women's Accessories",
     "Men's Accessories",
     "Women's Shoes",
@@ -842,7 +843,32 @@ const CATEGORY_FILTER_MAP = {
     "Baby Shoes",
     "Baby Accessories",
     "Homewares",
-  ],
+    "Jewellery & Watches",
+    "Cameras & Photography",
+    "Furniture",
+    "Collectables",
+    "Featured categories",
+    "Women's Clothing",
+    "Video Games & Consoles",
+    "Mens Clothing",
+    "Bags & Accessories",
+    "Cameras & Accessories",
+    "Featured categories",
+    "Women's Clothing",
+    "Men's Clothing",
+    "Women's Footwear",
+    "Books",
+    "Vintage Clothing",
+    "Health & Beauty",
+     "Dolls & Bears",
+    "Featured categories",
+    "Fine Jewellery",
+    "Antiques & Collectables",
+    "Women's Clothing",
+    "Model Railways & Trains",
+    "Men's Clothing",
+    "Sports Memorabilia",
+    ],
   Furniture: ['Furniture'],
   /* -------------------- 💎 Collectables -------------------- */
   Collectables: ['Collectables'],
