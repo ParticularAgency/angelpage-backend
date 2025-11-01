@@ -119,10 +119,38 @@ export const getProductsByCharity = async (req, res) => {
             search,
         } = req.query;
 
+        // 🧩 Static charity list
+        const charities = [
+            { name: 'British Heart Foundation', seller: 'bhf_shops', charity_ids: '225971', logo: 'https://i.ebayimg.com/thumbs/images/g/4fIAAOSwusZn2Vfg/s-l960.webp' },
+            { name: 'Oxfam', seller: 'oxfam_ebay_shop', charity_ids: '202918', logo: 'https://i.ebayimg.com/thumbs/images/g/vV8AAOSwqKln2Vfg/s-l960.webp' },
+            { name: 'Cancer Research UK', seller: 'cancerresearchukshop', charity_ids: '1089464', logo: 'https://i.ebayimg.com/thumbs/images/g/qjQAAOSwJCpn2Vfg/s-l960.webp' },
+            { name: 'British Red Cross', seller: 'britishredcross', charity_ids: '220949', logo: 'https://i.ebayimg.com/thumbs/images/g/JdYAAOSw2edn2Vfg/s-l960.webp' },
+            { name: 'Children’s Society', seller: 'the_childrens_society', charity_ids: '221124', logo: '' },
+            { name: 'Royal British Legion Industries', seller: 'theroyalbritishlegion', charity_ids: '210063', logo: '' },
+            { name: 'Sense', seller: 'sensecharityretail', charity_ids: '289868', logo: '' },
+            { name: 'PDSA', seller: 'pdsa_charity', charity_ids: '208217', logo: 'https://i.ebayimg.com/thumbs/images/g/rvsAAOSw2Gdn2Vfg/s-l960.webp' },
+            { name: "Barnardo's", seller: 'barnardos_charity', charity_ids: '216250', logo: 'https://i.ebayimg.com/thumbs/images/g/D9kAAOSwHH1n2YPN/s-l960.webp' },
+            { name: 'Age UK', seller: 'ageuk', charity_ids: '1128267', logo: 'https://i.ebayimg.com/thumbs/images/g/~IsAAOSwTZJn2Vfg/s-l960.webp' },
+            { name: 'Sue Ryder', seller: 'sueryderpre-loved', charity_ids: '1052076', logo: 'https://i.ebayimg.com/thumbs/images/g/DNAAAOSwTFhn2Vfg/s-l960.webp' },
+            { name: 'Marie Curie', seller: 'mariecurietrading', charity_ids: '207994', logo: 'https://i.ebayimg.com/thumbs/images/g/pXEAAOSwLjln4n8M/s-l960.webp' },
+        ];
+
         if (!charityName) {
             return res.status(400).json({
                 success: false,
                 message: "Charity name (seller) is required in the URL.",
+            });
+        }
+
+        // 🎯 Match the charity info from static list
+        const charityInfo = charities.find(
+            (c) => c.seller.toLowerCase() === charityName.toLowerCase()
+        );
+
+        if (!charityInfo) {
+            return res.status(404).json({
+                success: false,
+                message: `Charity '${charityName}' not found in supported list.`,
             });
         }
 
@@ -150,7 +178,7 @@ export const getProductsByCharity = async (req, res) => {
         const { data: products, count, error } = await query;
         if (error) throw error;
 
-        // 🧮 Build category & brand filters for that charity only
+        // 🧮 Build category & brand filters for that charity
         const { data: allData } = await supabase
             .from("charity_products")
             .select("category,brand,price")
@@ -179,7 +207,12 @@ export const getProductsByCharity = async (req, res) => {
 
         res.json({
             success: true,
-            charity: charityName,
+            charity: {
+                seller: charityInfo.seller,
+                name: charityInfo.name,
+                logo: charityInfo.logo,
+                charity_ids: charityInfo.charity_ids,
+            },
             total: count || 0,
             page: pageNum,
             pages: Math.ceil((count || 0) / limitNum),
