@@ -1,7 +1,6 @@
 import { Router } from "express";
-import { supabase } from "../../config/supabaseClient.js";
 import multer from "multer";
-import {  getCharityProducts } from "./appAllProducts.controller";
+import { getCharityProducts, getProductsByCharity, getAvailableCharities } from "./appAllProducts.controller";
 import {
 	createProduct,
 	editProduct,
@@ -80,4 +79,7 @@ router.delete("/:productId", authMiddleware(), deleteProduct);
 // =====eBay charity products
 // router.get("/:seller", getProductsBySeller);
 router.get("/all-charity-products", getCharityProducts);
+router.get("/charity/:charityName", getProductsByCharity);
+router.get("/charities", getAvailableCharities);
+
 export default router;

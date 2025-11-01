@@ -79,6 +79,7 @@ import bodyParser from 'body-parser';
 import connectDB from './config/database'; // Your MongoDB connection logic
 import routes from './routes'; // Your API routes
 import errorHandler from './middlewares/error.middleware'; // Error handling middleware
+import productsRoutes from './api/products/products.routes.js';
 
 dotenv.config();
 
@@ -130,18 +131,42 @@ app.get('/', (req, res) => {
   res.send('✅ Backend server is running!');
 });
 // ✅ Public Route: Charity Products (open CORS + caching)
-import productsRoutes from "./api/products/products.routes.js";
-
+// ============================================================
+// ✅ PUBLIC ENDPOINTS (no auth, open CORS + caching)
+// ============================================================
+// 🟢 1. All Charity Products
 app.use(
   "/api/products/all-charity-products",
-  cors({ origin: "*", methods: ["GET"] }), // 🔓 Public CORS override
+  cors({ origin: "*", methods: ["GET"] }),
   (req, res, next) => {
-    // ⏱ Add caching headers (1 hour)
+    res.set("Cache-Control", "public, max-age=3600, s-maxage=3600"); // 1 hour cache
+    next();
+  },
+  productsRoutes
+);
+
+// 🟢 2. Charity-specific Products
+app.use(
+  "/api/products/charity",
+  cors({ origin: "*", methods: ["GET"] }),
+  (req, res, next) => {
     res.set("Cache-Control", "public, max-age=3600, s-maxage=3600");
     next();
   },
   productsRoutes
 );
+
+// 🟢 3. All Available Charities
+app.use(
+  "/api/products/charities",
+  cors({ origin: "*", methods: ["GET"] }),
+  (req, res, next) => {
+    res.set("Cache-Control", "public, max-age=3600, s-maxage=3600");
+    next();
+  },
+  productsRoutes
+);
+
 // ✅ API Routes (Ensure Your Frontend Calls `/api/products/create`)
 app.use('/api', routes);
 

@@ -1,616 +1,3 @@
-// import fetch from "node-fetch";
-// import dotenv from "dotenv";
-// dotenv.config();
-
-// /** 🔁 Helper — retry fetch for rate-limited eBay requests */
-// async function fetchWithRetry(url, options, retries = 3, delay = 1500) {
-//     for (let i = 0; i < retries; i++) {
-//         try {
-//             const res = await fetch(url, options);
-//             if (res.status === 429) {
-//                 console.warn(`⚠️ Rate limit hit. Retrying in ${delay}ms...`);
-//                 await new Promise((r) => setTimeout(r, delay));
-//                 continue;
-//             }
-//             return res;
-//         } catch (err) {
-//             console.warn(`⚠️ Network error on attempt ${i + 1}:`, err.message);
-//             await new Promise((r) => setTimeout(r, delay));
-//         }
-//     }
-//     throw new Error("Too many failed fetch attempts.");
-// }
-
-// /** 🧩 Helper — safely parse JSON with retries */
-// async function safeJson(res, retries = 2) {
-//     for (let i = 0; i <= retries; i++) {
-//         try {
-//             return await res.json();
-//         } catch (err) {
-//             if (i === retries) throw new Error("Invalid JSON after retries.");
-//             console.warn("⚠️ Retrying JSON parse after failure...");
-//             await new Promise((r) => setTimeout(r, 1000));
-//         }
-//     }
-// }
-
-// /** 🧩 Helper — build eBay filter query string */
-// function buildEbayFilterString(filters = {}) {
-//     const filterParts = [];
-//     if (filters.seller) filterParts.push(`sellers:{${filters.seller}}`);
-//     if (filters.brand) filterParts.push(`brands:{${filters.brand}}`);
-//     if (filters.condition) filterParts.push(`conditions:{${filters.condition}}`);
-//     if (filters.category) filterParts.push(`categoryIds:{${filters.category}}`);
-//     return filterParts.length ? `&filter=${filterParts.join(",")}` : "";
-// }
-
-// /** 🎯 Controller — Fetch all charity products with pagination & filters */
-// export const getAllCharityProducts = async (req, res) => {
-//     const token = process.env.EBAY_OAUTH_TOKEN;
-//     const campId = process.env.EPN_CAMPID;
-//     const market = process.env.EBAY_MARKETPLACE_ID || "EBAY_GB";
-//     const baseUrl = process.env.BASE_URL || "http://localhost:5000";
-
-//     const { brand, condition, category } = req.query;
-//     const page = parseInt(req.query.page) || 1;
-//     const limit = parseInt(req.query.limit) || 10;
-
-//     if (!baseUrl.startsWith("http")) {
-//         console.error("❌ Invalid BASE_URL! Must start with http:// or https://");
-//         return res
-//             .status(500)
-//             .json({ error: "Invalid BASE_URL. Please fix in .env file." });
-//     }
-
-//     try {
-//         /** 1️⃣ Get charity sellers */
-//         let sellers = [];
-//         try {
-//             const charityRes = await fetch(`${baseUrl}/api/charity/charity-lists`);
-//             const charityData = await charityRes.json();
-//             const charities = charityData.charities || charityData || [];
-
-//             sellers = charities
-//                 .map((c) => c.seller || c.name?.toLowerCase().replace(/\s+/g, ""))
-//                 .filter(Boolean);
-//         } catch (err) {
-//             console.warn("⚠️ Charity API failed. Using fallback sellers list.");
-//         }
-
-//         /** 🩹 fallback seller list */
-//         if (sellers.length === 0) {
-//             sellers = [
-//                 "bhfshop",
-//                 "cancerresearchukshop",
-//                 "oxfamgb",
-//                 "barnardoscharityshop",
-//                 "rspcaofficial",
-//                 "edenvalleyhospice",
-//             ];
-//         }
-
-//         const limitedSellers = sellers.slice(0, 5);
-//         console.log(`✅ Found ${limitedSellers.length} charity sellers.`);
-
-//         /** 2️⃣ Prepare filter string */
-//         const filterString = buildEbayFilterString({ brand, condition, category });
-//         const allProducts = [];
-
-//         /** 3️⃣ Fetch products from eBay for each charity seller */
-//         for (const seller of limitedSellers) {
-//             console.log(`🔍 Fetching listings for seller: ${seller}`);
-//             let url = `https://api.ebay.com/buy/browse/v1/item_summary/search?q=charity&filter=sellers:{${seller}}${filterString}&limit=50`;
-//             let hasMore = true;
-
-//             while (hasMore) {
-//                 console.log("➡️ Fetching:", url);
-
-//                 let r;
-//                 try {
-//                     r = await fetchWithRetry(url, {
-//                         headers: {
-//                             Authorization: `Bearer ${token}`,
-//                             "X-EBAY-C-MARKETPLACE-ID": market,
-//                         },
-//                     });
-//                 } catch (fetchErr) {
-//                     console.warn(`⚠️ Fetch failed for ${seller}:`, fetchErr.message);
-//                     break;
-//                 }
-
-//                 if (!r.ok) {
-//                     console.warn(`⚠️ HTTP ${r.status} for ${seller}`);
-//                     break;
-//                 }
-
-//                 let data;
-//                 try {
-//                     data = await safeJson(r);
-//                 } catch (parseErr) {
-//                     console.warn(`⚠️ JSON parse failed for ${seller}:`, parseErr.message);
-//                     break;
-//                 }
-
-//                 const items = data?.itemSummaries || [];
-//                 if (items.length === 0) break;
-
-//                 for (const p of items) {
-//                     const match = p.itemWebUrl?.match(/\/itm\/(\d+)/);
-//                     const cleanUrl = match
-//                         ? `https://www.ebay.co.uk/itm/${match[1]}`
-//                         : p.itemWebUrl;
-//                     const affiliateUrl = `${cleanUrl}?campid=${campId}&customid=${seller}`;
-
-//                     allProducts.push({
-//                         title: p.title,
-//                         price: p.price?.value,
-//                         currency: p.price?.currency,
-//                         image: p.image?.imageUrl,
-//                         url: affiliateUrl,
-//                         seller,
-//                         brand: p.brand || "Unknown",
-//                         category:
-//                             p.categoryPath?.split(">").map((s) => s.trim()) || [
-//                                 "Uncategorised",
-//                             ],
-//                         condition: p.condition || "Unknown",
-//                         size: p.itemGroup?.itemGroupTitle || "N/A",
-//                         location: p.itemLocation?.country,
-//                     });
-//                 }
-
-//                 // Use eBay’s built-in pagination (safer than manual offset)
-//                 if (data.next) {
-//                     url = data.next;
-//                     await new Promise((r) => setTimeout(r, 1200)); // avoid rate-limit
-//                 } else {
-//                     hasMore = false;
-//                 }
-//             }
-//         }
-
-//         /** 4️⃣ Build filters */
-//         const filterSets = {
-//             brands: [...new Set(allProducts.map((p) => p.brand).filter(Boolean))],
-//             conditions: [...new Set(allProducts.map((p) => p.condition).filter(Boolean))],
-//             categories: [
-//                 ...new Set(
-//                     allProducts
-//                         .flatMap((p) => p.category)
-//                         .filter(Boolean)
-//                         .map((c) => c.trim())
-//                 ),
-//             ],
-//             sizes: [
-//                 ...new Set(
-//                     allProducts.map((p) => p.size).filter((s) => s && s !== "N/A")
-//                 ),
-//             ],
-//         };
-
-//         /** 5️⃣ Paginate results */
-//         const totalProducts = allProducts.length;
-//         const totalPages = Math.ceil(totalProducts / limit);
-//         const start = (page - 1) * limit;
-//         const end = start + limit;
-//         const paginatedProducts = allProducts.slice(start, end);
-
-//         /** 6️⃣ Send JSON response */
-//         res.json({
-//             totalProducts,
-//             totalPages,
-//             currentPage: page,
-//             limit,
-//             products: paginatedProducts,
-//             filters: filterSets,
-//         });
-//     } catch (err) {
-//         console.error("❌ Charity Products API error:", err);
-//         res.status(500).json({ error: "Failed to fetch charity products" });
-//     }
-// };
-// import fetch from "node-fetch";
-// import dotenv from "dotenv";
-// dotenv.config();
-
-// /** Utility: Wait for delay (used to avoid rate-limit) */
-// const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// /** Utility: fetch with retry on 429 */
-// async function fetchWithRetry(url, options, retries = 3, delay = 1500) {
-//     for (let i = 0; i < retries; i++) {
-//         const response = await fetch(url, options);
-//         if (response.status !== 429) return response;
-//         console.warn(`⚠️ Rate limit hit, retrying in ${delay}ms...`);
-//         await wait(delay);
-//     }
-//     throw new Error("Rate limit exceeded after retries.");
-// }
-
-// /** Controller: Fetch charity products for 6 specific charities */
-// export const getAllCharityProducts = async (req, res) => {
-//     const token = process.env.EBAY_OAUTH_TOKEN;
-//     const campId = process.env.EPN_CAMPID || "5339129195";
-//     const market = process.env.EBAY_MARKETPLACE_ID || "EBAY_GB";
-
-//     // pagination params
-//     const page = parseInt(req.query.page) || 1;
-//     const limit = parseInt(req.query.limit) || 10;
-
-//     const sellers = [
-//         "bhfshop",
-//         "cancerresearchukshop",
-//         "oxfamgb",
-//         "barnardoscharityshop",
-//         "rspcaofficial",
-//         "edenvalleyhospice",
-//     ];
-
-//     try {
-//         const allProducts = [];
-//         console.log(`✅ Fetching products for ${sellers.length} charity sellers`);
-
-//         // fetch each seller’s products
-//         for (const seller of sellers) {
-//             console.log(`🔍 Fetching from seller: ${seller}`);
-
-//             const url = `https://api.ebay.com/buy/browse/v1/item_summary/search?q=charity&filter=sellers:{${seller}}&limit=50`;
-
-//             const resEbay = await fetchWithRetry(url, {
-//                 headers: {
-//                     Authorization: `Bearer ${token}`,
-//                     "X-EBAY-C-MARKETPLACE-ID": market,
-//                 },
-//             });
-
-//             const data = await resEbay.json();
-//             const items = data.itemSummaries || [];
-
-//             items.forEach((p) => {
-//                 const match = p.itemWebUrl?.match(/\/itm\/(\d+)/);
-//                 const cleanUrl = match
-//                     ? `https://www.ebay.co.uk/itm/${match[1]}`
-//                     : p.itemWebUrl;
-//                 const affiliateUrl = `${cleanUrl}?campid=${campId}&customid=${seller}`;
-
-//                 allProducts.push({
-//                     title: p.title,
-//                     price: p.price?.value,
-//                     currency: p.price?.currency,
-//                     image: p.image?.imageUrl,
-//                     url: affiliateUrl,
-//                     seller,
-//                     brand: p.brand || "Unknown",
-//                     category: p.categoryPath?.split(">").map((s) => s.trim()) || [],
-//                     condition: p.condition || "Unknown",
-//                 });
-//             });
-
-//             await wait(1200); // avoid eBay rate-limit
-//         }
-
-//         /** Filters and pagination */
-//         const totalProducts = allProducts.length;
-//         const totalPages = Math.ceil(totalProducts / limit);
-//         const start = (page - 1) * limit;
-//         const paginated = allProducts.slice(start, start + limit);
-
-//         const filters = {
-//             brands: [...new Set(allProducts.map((p) => p.brand).filter(Boolean))],
-//             conditions: [
-//                 ...new Set(allProducts.map((p) => p.condition).filter(Boolean)),
-//             ],
-//             sellers: [...new Set(allProducts.map((p) => p.seller))],
-//         };
-
-//         /** Respond with structured data */
-//         res.json({
-//             totalProducts,
-//             totalPages,
-//             currentPage: page,
-//             limit,
-//             products: paginated,
-//             filters,
-//         });
-//     } catch (err) {
-//         console.error("❌ Error fetching charity products:", err);
-//         res.status(500).json({
-//             error: "Failed to fetch charity products",
-//             details: err.message,
-//         });
-//     }
-// };
-// import fetch from "node-fetch";
-// import dotenv from "dotenv";
-// dotenv.config();
-
-// /** 🔁 Helper — retry fetch for rate-limited eBay requests */
-// async function fetchWithRetry(url, options, retries = 3, delay = 1500) {
-//     for (let i = 0; i < retries; i++) {
-//         try {
-//             const res = await fetch(url, options);
-//             if (res.status === 429) {
-//                 console.warn(`⚠️ Rate limit hit. Retrying in ${delay}ms...`);
-//                 await new Promise((r) => setTimeout(r, delay));
-//                 continue;
-//             }
-//             return res;
-//         } catch (err) {
-//             console.warn(`⚠️ Network error on attempt ${i + 1}:`, err.message);
-//             await new Promise((r) => setTimeout(r, delay));
-//         }
-//     }
-//     throw new Error("Too many failed fetch attempts.");
-// }
-
-// /** 🧩 Helper — safely parse JSON with retries */
-// async function safeJson(res, retries = 2) {
-//     for (let i = 0; i <= retries; i++) {
-//         try {
-//             return await res.json();
-//         } catch (err) {
-//             if (i === retries) throw new Error("Invalid JSON after retries.");
-//             console.warn("⚠️ Retrying JSON parse after failure...");
-//             await new Promise((r) => setTimeout(r, 1000));
-//         }
-//     }
-// }
-
-// /** 🧩 Helper — build eBay filter query string */
-// function buildEbayFilterString(filters = {}) {
-//     const filterParts = [];
-//     if (filters.seller) filterParts.push(`sellers:{${filters.seller}}`);
-//     if (filters.brand) filterParts.push(`brands:{${filters.brand}}`);
-//     if (filters.condition) filterParts.push(`conditions:{${filters.condition}}`);
-//     if (filters.category) filterParts.push(`categoryIds:{${filters.category}}`);
-//     return filterParts.length ? `&filter=${filterParts.join(",")}` : "";
-// }
-
-// /** 🎯 Controller — Fetch all charity products with pagination & filters */
-// export const getAllCharityProducts = async (req, res) => {
-//     const token = process.env.EBAY_OAUTH_TOKEN;
-//     const campId = process.env.EPN_CAMPID;
-//     const market = process.env.EBAY_MARKETPLACE_ID || "EBAY_GB";
-//     const baseUrl = process.env.BASE_URL || "http://localhost:5000";
-
-//     const { brand, condition, category } = req.query;
-//     const page = parseInt(req.query.page) || 1;
-//     const limit = parseInt(req.query.limit) || 10;
-
-//     if (!baseUrl.startsWith("http")) {
-//         console.error("❌ Invalid BASE_URL! Must start with http:// or https://");
-//         return res
-//             .status(500)
-//             .json({ error: "Invalid BASE_URL. Please fix in .env file." });
-//     }
-
-//     try {
-//         /** 1️⃣ Get charity sellers */
-//         let sellers = [];
-//         try {
-//             const charityRes = await fetch(`${baseUrl}/api/charity/charity-lists`);
-//             const charityData = await charityRes.json();
-//             const charities = charityData.charities || charityData || [];
-
-//             sellers = charities
-//                 .map((c) => c.seller || c.name?.toLowerCase().replace(/\s+/g, ""))
-//                 .filter(Boolean);
-//         } catch (err) {
-//             console.warn("⚠️ Charity API failed. Using fallback sellers list.");
-//         }
-
-//         /** 🩹 fallback seller list */
-//         if (sellers.length === 0) {
-//             sellers = [
-//                 "bhfshop",
-//                 "cancerresearchukshop",
-//                 "oxfamgb",
-//                 "barnardoscharityshop",
-//                 "rspcaofficial",
-//                 "edenvalleyhospice",
-//             ];
-//         }
-
-//         const limitedSellers = sellers.slice(0, 10);
-//         console.log(`✅ Found ${limitedSellers.length} charity sellers.`);
-
-//         /** 2️⃣ Prepare filter string */
-//         const filterString = buildEbayFilterString({ brand, condition, category });
-//         const allProducts = [];
-
-//         /** 3️⃣ Fetch products from eBay for each charity seller */
-//         for (const seller of limitedSellers) {
-//             console.log(`🔍 Fetching listings for seller: ${seller}`);
-//             let url = `https://api.ebay.com/buy/browse/v1/item_summary/search?q=charity&filter=sellers:{${seller}}${filterString}&limit=50`;
-//             let hasMore = true;
-//             let sellerProducts = [];
-
-//             while (hasMore && sellerProducts.length < 300) {
-//                 console.log("➡️ Fetching:", url);
-
-//                 let r;
-//                 try {
-//                     r = await fetchWithRetry(url, {
-//                         headers: {
-//                             Authorization: `Bearer ${token}`,
-//                             "X-EBAY-C-MARKETPLACE-ID": market,
-//                         },
-//                     });
-//                 } catch (fetchErr) {
-//                     console.warn(`⚠️ Fetch failed for ${seller}:`, fetchErr.message);
-//                     break;
-//                 }
-
-//                 if (!r.ok) {
-//                     console.warn(`⚠️ HTTP ${r.status} for ${seller}`);
-//                     break;
-//                 }
-
-//                 let data;
-//                 try {
-//                     data = await safeJson(r);
-//                 } catch (parseErr) {
-//                     console.warn(`⚠️ JSON parse failed for ${seller}:`, parseErr.message);
-//                     break;
-//                 }
-
-//                 const items = data?.itemSummaries || [];
-//                 if (items.length === 0) break;
-
-//                 for (const p of items) {
-//                     const match = p.itemWebUrl?.match(/\/itm\/(\d+)/);
-//                     const cleanUrl = match
-//                         ? `https://www.ebay.co.uk/itm/${match[1]}`
-//                         : p.itemWebUrl;
-//                     const affiliateUrl = `${cleanUrl}?campid=${campId}&customid=${seller}`;
-
-//                     sellerProducts.push({
-//                         title: p.title,
-//                         price: p.price?.value,
-//                         currency: p.price?.currency,
-//                         image: p.image?.imageUrl,
-//                         url: affiliateUrl,
-//                         seller,
-//                         brand: p.brand || "Unknown",
-//                         category:
-//                             p.categoryPath?.split(">").map((s) => s.trim()) || [
-//                                 "Uncategorised",
-//                             ],
-//                         condition: p.condition || "Unknown",
-//                         size: p.itemGroup?.itemGroupTitle || "N/A",
-//                         location: p.itemLocation?.country,
-//                     });
-
-//                     if (sellerProducts.length >= 300) break;
-//                 }
-
-//                 if (data.next && sellerProducts.length < 300) {
-//                     url = data.next;
-//                     await new Promise((r) => setTimeout(r, 1200)); // avoid rate-limit
-//                 } else {
-//                     hasMore = false;
-//                 }
-//             }
-
-//             console.log(`✅ Collected ${sellerProducts.length} items from ${seller}`);
-//             allProducts.push(...sellerProducts);
-//         }
-
-//         /** 4️⃣ Group products by category */
-//         const categoryCount = {};
-//         for (const p of allProducts) {
-//             const cat = p.category?.[p.category.length - 1] || "Uncategorised";
-//             categoryCount[cat] = (categoryCount[cat] || 0) + 1;
-//         }
-
-//         // Filter categories with at least 200 products
-//         const topCategories = Object.entries(categoryCount)
-//             .filter(([_, count]) => count >= 200)
-//             .sort((a, b) => b[1] - a[1])
-//             .slice(0, 10)
-//             .map(([cat]) => cat);
-
-//         const filteredProducts = allProducts.filter((p) =>
-//             topCategories.includes(p.category?.[p.category.length - 1])
-//         );
-
-//         /** 5️⃣ Build filters */
-//         const filterSets = {
-//             brands: [...new Set(filteredProducts.map((p) => p.brand).filter(Boolean))],
-//             conditions: [
-//                 ...new Set(filteredProducts.map((p) => p.condition).filter(Boolean)),
-//             ],
-//             categories: topCategories,
-//             sizes: [
-//                 ...new Set(
-//                     filteredProducts
-//                         .map((p) => p.size)
-//                         .filter((s) => s && s !== "N/A")
-//                 ),
-//             ],
-//         };
-
-//         /** 6️⃣ Paginate results */
-//         const totalProducts = filteredProducts.length;
-//         const totalPages = Math.ceil(totalProducts / limit);
-//         const start = (page - 1) * limit;
-//         const end = start + limit;
-//         const paginatedProducts = filteredProducts.slice(start, end);
-
-//         /** 7️⃣ Send JSON response */
-//         res.json({
-//             totalProducts,
-//             totalPages,
-//             currentPage: page,
-//             limit,
-//             products: paginatedProducts,
-//             filters: filterSets,
-//             topCategories,
-//         });
-//     } catch (err) {
-//         console.error("❌ Charity Products API error:", err);
-//         res.status(500).json({ error: "Failed to fetch charity products" });
-//     }
-// };
-// import CharityProduct from "../../models/CharityProduct.model";
-
-// /**
-//  * @desc Get charity products (with pagination + filters)
-//  * @route GET /api/charity-products
-//  * @query page, limit, category, minPrice, maxPrice
-//  */
-// export const getCharityProducts = async (req, res) => {
-//     try {
-//         const {
-//             page = "1",
-//             limit,
-//             category,
-//             minPrice,
-//             maxPrice,
-//         } = req.query;
-
-//         const query = {};
-
-//         // 🧩 Filters
-//         if (category) query.category = category;
-//         if (minPrice || maxPrice) {
-//             query.price = {};
-//             if (minPrice) query.price.$gte = parseFloat(minPrice);
-//             if (maxPrice) query.price.$lte = parseFloat(maxPrice);
-//         }
-
-//         // 🧮 Pagination
-//         const pageNum = parseInt(page, 10);
-//         const limitNum = limit ? parseInt(limit, 10) : 0; // 0 = show all
-
-//         // Count total docs for pagination info
-//         const totalCount = await CharityProduct.countDocuments(query);
-
-//         // Query builder
-//         const productsQuery = CharityProduct.find(query).sort({ updatedAt: -1 });
-
-//         if (limitNum > 0) {
-//             productsQuery.skip((pageNum - 1) * limitNum).limit(limitNum);
-//         }
-
-//         const products = await productsQuery.exec();
-
-//         res.json({
-//             success: true,
-//             total: totalCount,
-//             page: limitNum > 0 ? pageNum : 1,
-//             pages: limitNum > 0 ? Math.ceil(totalCount / limitNum) : 1,
-//             count: products.length,
-//             products,
-//         });
-//     } catch (error) {
-//         console.error("❌ Error fetching charity products:", error);
-//         res.status(500).json({
-//             success: false,
-//             message: "Internal server error",
-//         });
-//     }
-// };
 import { supabase } from "../../config/supabaseClient.js";
 
 /**
@@ -708,6 +95,145 @@ export const getCharityProducts = async (req, res) => {
         });
     } catch (error) {
         console.error("❌ Error fetching charity products:", error.message);
+        res.status(500).json({
+            success: false,
+            message: "Internal server error",
+        });
+    }
+};
+/**
+ * @desc Get products by a specific charity seller (with pagination and filters)
+ * @route GET /api/products/charity/:charityName
+ * @query page, limit, category, minPrice, maxPrice, brand, search
+ */
+export const getProductsByCharity = async (req, res) => {
+    try {
+        const { charityName } = req.params;
+        const {
+            page = "1",
+            limit,
+            category,
+            minPrice,
+            maxPrice,
+            brand,
+            search,
+        } = req.query;
+
+        if (!charityName) {
+            return res.status(400).json({
+                success: false,
+                message: "Charity name (seller) is required in the URL.",
+            });
+        }
+
+        const pageNum = parseInt(page, 10);
+        const limitNum = limit ? parseInt(limit, 10) : 20;
+        const offset = (pageNum - 1) * limitNum;
+
+        let query = supabase
+            .from("charity_products")
+            .select("*", { count: "exact" })
+            .eq("charity_seller", charityName)
+            .range(offset, offset + limitNum - 1)
+            .order("updated_at", { ascending: false });
+
+        // 🧩 Optional filters
+        if (category) query = query.ilike("category", `%${category}%`);
+        if (brand) query = query.ilike("brand", `%${brand}%`);
+        if (minPrice) query = query.gte("price", parseFloat(minPrice));
+        if (maxPrice) query = query.lte("price", parseFloat(maxPrice));
+        if (search)
+            query = query.or(
+                `title.ilike.%${search}%,brand.ilike.%${search}%,category.ilike.%${search}%`
+            );
+
+        const { data: products, count, error } = await query;
+        if (error) throw error;
+
+        // 🧮 Build category & brand filters for that charity only
+        const { data: allData } = await supabase
+            .from("charity_products")
+            .select("category,brand,price")
+            .eq("charity_seller", charityName);
+
+        const categoryFacet = {};
+        const brandFacet = {};
+        const priceRange = { minPrice: null, maxPrice: null };
+
+        for (const item of allData || []) {
+            if (item.category)
+                categoryFacet[item.category] = (categoryFacet[item.category] || 0) + 1;
+            if (item.brand)
+                brandFacet[item.brand] = (brandFacet[item.brand] || 0) + 1;
+            if (item.price) {
+                priceRange.minPrice =
+                    priceRange.minPrice === null
+                        ? item.price
+                        : Math.min(priceRange.minPrice, item.price);
+                priceRange.maxPrice =
+                    priceRange.maxPrice === null
+                        ? item.price
+                        : Math.max(priceRange.maxPrice, item.price);
+            }
+        }
+
+        res.json({
+            success: true,
+            charity: charityName,
+            total: count || 0,
+            page: pageNum,
+            pages: Math.ceil((count || 0) / limitNum),
+            count: products?.length || 0,
+            products: products || [],
+            filters: {
+                categories: Object.entries(categoryFacet).map(([k, v]) => ({
+                    categoryName: k,
+                    count: v,
+                })),
+                brands: Object.entries(brandFacet).map(([k, v]) => ({
+                    brand: k,
+                    count: v,
+                })),
+                priceRange,
+            },
+        });
+    } catch (error) {
+        console.error("❌ Error fetching products by charity:", error.message);
+        res.status(500).json({
+            success: false,
+            message: "Internal server error",
+        });
+    }
+};
+
+/**
+ * @desc Return all supported charities (with fixed logos)
+ * @route GET /api/products/charities
+ */
+export const getAvailableCharities = async (req, res) => {
+    try {
+        const charities = [
+            { name: 'British Heart Foundation', seller: 'bhf_shops', charity_ids: '225971', logo: 'https://i.ebayimg.com/thumbs/images/g/4fIAAOSwusZn2Vfg/s-l960.webp' },
+            { name: 'Oxfam', seller: 'oxfam_ebay_shop', charity_ids: '202918', logo: 'https://i.ebayimg.com/thumbs/images/g/vV8AAOSwqKln2Vfg/s-l960.webp' },
+            { name: 'Cancer Research UK', seller: 'cancerresearchukshop', charity_ids: '1089464', logo: 'https://i.ebayimg.com/thumbs/images/g/qjQAAOSwJCpn2Vfg/s-l960.webp' },
+            { name: 'British Red Cross', seller: 'britishredcross', charity_ids: '220949', logo: 'https://i.ebayimg.com/thumbs/images/g/JdYAAOSw2edn2Vfg/s-l960.webp' },
+            { name: 'Children’s Society', seller: 'the_childrens_society', charity_ids: '221124', logo: 'https://i.ebayimg.com/thumbs/images/g/B3AAAOSwz-tn4~Cp/s-l960.webp' },
+            { name: 'Royal British Legion Industries', seller: 'theroyalbritishlegion', charity_ids: '210063', logo: 'https://i.ebayimg.com/thumbs/images/g/8z8AAOSwhZdn4~Cp/s-l960.webp' },
+            { name: 'Sense', seller: 'sensecharityretail', charity_ids: '289868', logo: 'https://i.ebayimg.com/thumbs/images/g/NVkAAOSwGSJn4~Cp/s-l960.webp' },
+            { name: 'PDSA', seller: 'pdsa_charity', charity_ids: '208217', logo: 'https://i.ebayimg.com/thumbs/images/g/rvsAAOSw2Gdn2Vfg/s-l960.webp' },
+            { name: "Barnardo's", seller: 'barnardos_charity', charity_ids: '216250', logo: 'https://i.ebayimg.com/thumbs/images/g/D9kAAOSwHH1n2YPN/s-l960.webp' },
+            { name: 'Age UK', seller: 'ageuk', charity_ids: '1128267', logo: 'https://i.ebayimg.com/thumbs/images/g/~IsAAOSwTZJn2Vfg/s-l960.webp' },
+            { name: 'Sue Ryder', seller: 'sueryderpre-loved', charity_ids: '1052076', logo: 'https://i.ebayimg.com/thumbs/images/g/DNAAAOSwTFhn2Vfg/s-l960.webp' },
+            { name: 'Marie Curie', seller: 'mariecurietrading', charity_ids: '207994', logo: 'https://i.ebayimg.com/thumbs/images/g/pXEAAOSwLjln4n8M/s-l960.webp' },
+        ];
+
+        res.json({
+            success: true,
+            count: charities.length,
+            charities,
+        });
+    } catch (error) {
+        console.error("❌ Error loading charities:", error.message);
         res.status(500).json({
             success: false,
             message: "Internal server error",
