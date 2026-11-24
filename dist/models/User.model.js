@@ -56,12 +56,10 @@ const addressSchema = new mongoose_1.Schema({
     country: { type: String, required: true },
     postcode: { type: String, required: true },
 });
-// Payment Method Schema
+// Payment Method Schema — never store card numbers or CVV
 const paymentMethodSchema = new mongoose_1.Schema({
     nameAccountHolder: { type: String, required: true },
-    accountNumber: { type: String, required: true },
-    expiryDate: { type: String, required: true },
-    cvvNumber: { type: String, required: true },
+    stripePaymentMethodId: { type: String, default: "" },
     billingAddress: {
         name: {
             type: String,

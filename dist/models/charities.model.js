@@ -25,12 +25,10 @@ const addressSchema = new Schema({
     country: { type: String, required: true },
     postcode: { type: String, required: true },
 });
-/* ------------------------ 💳 Payment Schema ------------------------ */
+/* ------------------------ Payment Schema (billing only — no PAN/CVV) ------------------------ */
 const paymentMethodSchema = new Schema({
     nameAccountHolder: { type: String, required: true },
-    accountNumber: { type: String, required: true },
-    expiryDate: { type: String, required: true },
-    cvvNumber: { type: String, required: true },
+    stripePaymentMethodId: { type: String, default: "" },
     billingAddress: {
         name: {
             type: String,

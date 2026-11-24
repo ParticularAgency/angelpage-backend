@@ -22,6 +22,7 @@ const Charity_model_1 = __importDefault(require("../models/Charity.model"));
 const platformPolicy_js_1 = require("../constants/platformPolicy.js");
 const affiliateApiMapper_service_js_1 = require("./affiliateApiMapper.service.js");
 const ebayAffiliate_service_js_1 = require("./ebayAffiliate.service.js");
+const productSlug_js_1 = require("../utils/productSlug.js");
 const MAX_IMPORT = 50;
 function linkProductToOwner(product, ownerId, ownerRole) {
     return __awaiter(this, void 0, void 0, function* () {
@@ -99,13 +100,18 @@ function importAffiliateProducts(_a) {
                 isArchived: false,
             };
             if (!product) {
+                payload.slug = yield (0, productSlug_js_1.buildUniqueProductSlug)(item.name);
                 product = new Product_model_1.default(payload);
                 yield product.save();
                 yield linkProductToOwner(product, ownerId, ownerRole);
                 imported.push(product);
             }
             else {
+                const nameChanged = item.name && item.name !== product.name;
                 Object.assign(product, payload);
+                if (nameChanged) {
+                    product.slug = yield (0, productSlug_js_1.buildUniqueProductSlug)(item.name, product._id);
+                }
                 yield product.save();
                 updated.push(product);
             }

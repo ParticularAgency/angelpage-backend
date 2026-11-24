@@ -7,6 +7,7 @@ const express_1 = __importDefault(require("express"));
 const messages_controller_1 = require("./messages.controller");
 const auth_middleware_1 = require("../../middlewares/auth.middleware");
 const router = express_1.default.Router();
+router.post("/hooks", messages_controller_1.messageWebhook);
 router.post("/conversations/start", (0, auth_middleware_1.authMiddleware)(), messages_controller_1.startConversation);
 router.post("/messages/send", (0, auth_middleware_1.authMiddleware)(), messages_controller_1.sendMessage);
 router.get("/conversations/:conversationId", (0, auth_middleware_1.authMiddleware)(), messages_controller_1.fetchConversation);

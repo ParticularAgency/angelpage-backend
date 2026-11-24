@@ -15,6 +15,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.runGallerySocialPostJob = exports.deleteGalleryItem = exports.shareGalleryItem = exports.publishGalleryItem = exports.createGalleryItem = exports.getAdminGallery = exports.getMyGallery = exports.getGalleryBySlug = exports.getPublishedGallery = void 0;
 const fs_1 = __importDefault(require("fs"));
 const GalleryItem_model_js_1 = __importDefault(require("../../models/GalleryItem.model.js"));
+const Product_model_1 = __importDefault(require("../../models/Product.model"));
 const User_model_1 = __importDefault(require("../../models/User.model"));
 const Charity_model_1 = __importDefault(require("../../models/Charity.model"));
 const Admin_model_1 = __importDefault(require("../../models/Admin.model"));
@@ -88,18 +89,70 @@ const cleanupFile = (file) => {
         fs_1.default.unlink(file.path, () => { });
     }
 };
+const parseTags = (raw) => {
+    if (!raw)
+        return [];
+    if (Array.isArray(raw))
+        return raw.map(String).filter(Boolean);
+    if (typeof raw === "string") {
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed))
+                return parsed.map(String).filter(Boolean);
+        }
+        catch (_a) {
+            /* comma-separated fallback */
+        }
+        return raw
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean);
+    }
+    return [];
+};
 const getPublishedGallery = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { kind, limit = 24, page = 1 } = req.query;
+        const { kind, tag, charityId, limit = 24, page = 1 } = req.query;
         const query = { status: "published" };
         if (kind)
             query.kind = kind;
+        if (charityId)
+            query.charityId = charityId;
+        if (tag)
+            query.tags = tag;
         const items = yield GalleryItem_model_js_1.default.find(query)
             .sort({ publishedAt: -1, createdAt: -1 })
             .limit(Number(limit))
-            .skip((Number(page) - 1) * Number(limit));
+            .skip((Number(page) - 1) * Number(limit))
+            .lean();
+        const productIds = [
+            ...new Set(items.map((item) => String(item.productId || "")).filter(Boolean)),
+        ];
+        const charityIds = [
+            ...new Set(items.map((item) => String(item.charityId || "")).filter(Boolean)),
+        ];
+        const [products, charities] = yield Promise.all([
+            productIds.length
+                ? Product_model_1.default.find({ _id: { $in: productIds } }).select("_id slug").lean()
+                : [],
+            charityIds.length
+                ? Charity_model_1.default.find({ _id: { $in: charityIds } })
+                    .select("_id charityName profileImage")
+                    .lean()
+                : [],
+        ]);
+        const slugById = new Map(products.map((product) => [String(product._id), product.slug]));
+        const charityById = new Map(charities.map((charity) => [String(charity._id), charity]));
+        const enriched = items.map((item) => {
+            const charity = item.charityId
+                ? charityById.get(String(item.charityId))
+                : null;
+            return Object.assign(Object.assign({}, item), { productSlug: item.productId
+                    ? slugById.get(String(item.productId)) || null
+                    : null, charityName: (charity === null || charity === void 0 ? void 0 : charity.charityName) || null, charityProfileImage: (charity === null || charity === void 0 ? void 0 : charity.profileImage) || null });
+        });
         const total = yield GalleryItem_model_js_1.default.countDocuments(query);
-        res.json({ items, total, page: Number(page) });
+        res.json({ items: enriched, total, page: Number(page) });
     }
     catch (error) {
         res.status(500).json({ message: "Failed to fetch gallery." });
@@ -186,7 +239,7 @@ const createGalleryItem = (req, res) => __awaiter(void 0, void 0, void 0, functi
             caption: caption || "",
             media,
             kind: parsedKind,
-            tags: tags ? (Array.isArray(tags) ? tags : JSON.parse(tags)) : [],
+            tags: parseTags(tags),
             productId: productId || undefined,
             charityId: authorRole === "CHARITY" ? authorId : undefined,
             authorId,

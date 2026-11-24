@@ -10,6 +10,7 @@ const appCharity_controller_js_1 = require("./appCharity.controller.js");
 const charityStaff_controller_js_1 = require("./charityStaff.controller.js");
 const charities_controller_1 = require("./charities.controller");
 const charityIntegration_controller_js_1 = require("./charityIntegration.controller.js");
+const validation_middleware_1 = require("../../middlewares/validation.middleware");
 const router = (0, express_1.Router)();
 const upload = (0, multer_1.default)({ dest: "uploads/" });
 // Profile routes
@@ -30,8 +31,8 @@ router.post("/profile/addresses", (0, auth_middleware_1.authMiddleware)(), chari
 router.put("/profile/addresses/:addressId", (0, auth_middleware_1.authMiddleware)(), charities_controller_1.updateAddress);
 router.delete("/profile/addresses/:addressId", (0, auth_middleware_1.authMiddleware)(), charities_controller_1.deleteAddress);
 // Payment routes
-router.post("/profile/payments", (0, auth_middleware_1.authMiddleware)(), charities_controller_1.addPayment);
-router.put("/profile/payments/:paymentId", (0, auth_middleware_1.authMiddleware)(), charities_controller_1.updatePayment);
+router.post("/profile/payments", (0, auth_middleware_1.authMiddleware)(), validation_middleware_1.validatePaymentMethod, charities_controller_1.addPayment);
+router.put("/profile/payments/:paymentId", (0, auth_middleware_1.authMiddleware)(), validation_middleware_1.validatePaymentMethod, charities_controller_1.updatePayment);
 router.delete("/profile/payments/:paymentId", (0, auth_middleware_1.authMiddleware)(), charities_controller_1.deletePayment);
 router.get("/charities", charities_controller_1.getCharityList);
 router.get("/charities/:charityid", charities_controller_1.getCharityDetails);

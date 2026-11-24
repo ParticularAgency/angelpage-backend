@@ -56,6 +56,18 @@ const communityEventSchema = new mongoose_1.Schema({
     donationRaised: { type: Number, default: 0 },
     donationUrl: { type: String, default: "" },
     liveStreamUrl: { type: String, default: "" },
+    charityId: { type: mongoose_1.Schema.Types.ObjectId, ref: "Charity" },
+    fundAllocations: {
+        type: [
+            {
+                id: { type: String, required: true },
+                label: { type: String, required: true },
+                description: { type: String, default: "" },
+                percent: { type: Number, default: 0 },
+            },
+        ],
+        default: [],
+    },
     pollQuestion: { type: String, default: "" },
     pollOptions: { type: [pollOptionSchema], default: [] },
     status: {

@@ -16,6 +16,7 @@ exports.deletePayment = exports.updatePayment = exports.addPayment = exports.del
 const cloudinary_1 = __importDefault(require("../../config/cloudinary"));
 const User_model_1 = __importDefault(require("../../models/User.model"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const sanitizePayment_js_1 = require("../../utils/sanitizePayment.js");
 // Utility to handle unknown error types
 const handleUnknownError = (error) => error instanceof Error ? error.message : "An unknown error occurred";
 // Update User Profile
@@ -197,12 +198,22 @@ const deleteAddress = (req, res) => __awaiter(void 0, void 0, void 0, function* 
     }
 });
 exports.deleteAddress = deleteAddress;
-// Add Payment Method
+// Add Payment Method (billing metadata only — cards via Stripe)
 const addPayment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
     try {
         const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.userId;
-        const newPayment = req.body;
+        if ((0, sanitizePayment_js_1.rejectsCardSecrets)(req.body)) {
+            res.status(400).json({
+                message: "Card numbers and CVV must not be sent. Use Stripe Elements for card payments.",
+            });
+            return;
+        }
+        const newPayment = (0, sanitizePayment_js_1.sanitizePaymentMethodInput)(req.body);
+        if (!newPayment.nameAccountHolder) {
+            res.status(400).json({ message: "nameAccountHolder is required" });
+            return;
+        }
         const user = yield User_model_1.default.findById(userId);
         if (!user) {
             res.status(404).json({ message: "User not found" });
@@ -230,7 +241,13 @@ const updatePayment = (req, res) => __awaiter(void 0, void 0, void 0, function* 
     try {
         const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.userId;
         const { paymentId } = req.params;
-        const updatedPayment = req.body;
+        if ((0, sanitizePayment_js_1.rejectsCardSecrets)(req.body)) {
+            res.status(400).json({
+                message: "Card numbers and CVV must not be sent. Use Stripe Elements for card payments.",
+            });
+            return;
+        }
+        const updatedPayment = (0, sanitizePayment_js_1.sanitizePaymentMethodInput)(req.body);
         const user = yield User_model_1.default.findById(userId);
         if (!user) {
             res.status(404).json({ message: "User not found" });

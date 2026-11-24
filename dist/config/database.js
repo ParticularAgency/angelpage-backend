@@ -18,9 +18,9 @@ const dotenv_1 = __importDefault(require("dotenv"));
 dotenv_1.default.config();
 const connectDB = () => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const mongoURI = process.env.MONGO_URI; // Get the MongoDB URI from environment variables
+        const mongoURI = process.env.MONGO_URI || process.env.MONGODB_URI;
         if (!mongoURI) {
-            throw new Error("MongoDB URI is not defined in .env");
+            throw new Error("MONGO_URI is not defined in .env");
         }
         // Connect to MongoDB without deprecated options
         yield mongoose_1.default.connect(mongoURI);

@@ -23,7 +23,9 @@ const Cart_model_1 = __importDefault(require("../../models/Cart.model"));
 const date_fns_1 = require("date-fns");
 const dashboard_service_1 = require("../../services/dashboard.service");
 const platformPolicy_js_1 = require("../../constants/platformPolicy.js");
+const profitSplit_js_1 = require("../../utils/profitSplit.js");
 const ukValidation_js_1 = require("../../utils/ukValidation.js");
+const sanitizePayment_js_1 = require("../../utils/sanitizePayment.js");
 const sanitizeShippingAddress = (address = {}) => ({
     name: address.name,
     address: address.address,
@@ -102,7 +104,7 @@ const createOrder = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             if (!product.productId) {
                 return res.status(400).json({ error: "Invalid product in order." });
             }
-            const listing = yield Product_model_1.default.findById(product.productId).select("seller charity weight dimensions");
+            const listing = yield Product_model_1.default.findById(product.productId).select("seller charity weight dimensions sellerSharePercent fulfillmentType sellAreas");
             if (!listing) {
                 return res.status(400).json({
                     error: `Product not found: ${product.productId}`,
@@ -126,10 +128,13 @@ const createOrder = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             const productWeight = (_c = product.weight) !== null && _c !== void 0 ? _c : listing.weight;
             const productDimensions = (_d = product.dimensions) !== null && _d !== void 0 ? _d : listing.dimensions;
             const totalCost = product.price * product.quantity;
-            const charityProfit = totalCost * platformPolicy_js_1.CHARITY_SHARE_RATE;
-            const adminFee = totalCost * platformPolicy_js_1.PLATFORM_FEE_RATE;
+            const split = (0, profitSplit_js_1.calculateProfitSplit)(totalCost, (_e = listing.sellerSharePercent) !== null && _e !== void 0 ? _e : 0);
+            const charityProfit = split.charityProfit;
+            const adminFee = split.platformFee;
+            const sellerProfit = split.sellerProfit;
             const totalWeight = parseFloat(productWeight || 0) * product.quantity;
             enrichedProducts.push(Object.assign(Object.assign({}, product), { seller: product.seller || listing.seller || null, charity: charityId, weight: productWeight, totalProductCost: totalCost, charityProfit,
+                sellerProfit,
                 adminFee,
                 totalWeight, dimensions: {
                     length: parseFloat((productDimensions === null || productDimensions === void 0 ? void 0 : productDimensions.depth) || 0),
@@ -149,14 +154,24 @@ const createOrder = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
         const grandTotal = totalAmount + resolvedShipmentCost;
         // Generate numeric ShipStation order ID
         const numericShipStationOrderId = generateNumericId();
-        const normalizedPaymentMethod = isGuestOrder
-            ? Object.assign(Object.assign({}, paymentMethod), { nameAccountHolder: (paymentMethod === null || paymentMethod === void 0 ? void 0 : paymentMethod.nameAccountHolder) || guestName.trim(), accountNumber: (paymentMethod === null || paymentMethod === void 0 ? void 0 : paymentMethod.accountNumber) || "stripe", expiryDate: (paymentMethod === null || paymentMethod === void 0 ? void 0 : paymentMethod.expiryDate) || "N/A", cvvNumber: (paymentMethod === null || paymentMethod === void 0 ? void 0 : paymentMethod.cvvNumber) || "N/A", useShippingAsBilling: (_e = paymentMethod === null || paymentMethod === void 0 ? void 0 : paymentMethod.useShippingAsBilling) !== null && _e !== void 0 ? _e : true, billingAddress: (paymentMethod === null || paymentMethod === void 0 ? void 0 : paymentMethod.billingAddress) || {
-                    name: guestName.trim(),
+        const normalizedPaymentMethod = (() => {
+            var _a;
+            const sanitized = (0, sanitizePayment_js_1.sanitizePaymentMethodInput)(paymentMethod || {});
+            const holder = sanitized.nameAccountHolder ||
+                (isGuestOrder ? guestName.trim() : "Cardholder");
+            return {
+                nameAccountHolder: holder,
+                stripePaymentMethodId: sanitized.stripePaymentMethodId || "",
+                useShippingAsBilling: (_a = sanitized.useShippingAsBilling) !== null && _a !== void 0 ? _a : true,
+                billingAddress: sanitized.billingAddress || {
+                    name: isGuestOrder ? guestName.trim() : holder,
                     address: shippingAddress.address,
                     city: shippingAddress.city,
                     country: shippingAddress.country,
                     postCode: shippingAddress.postcode || shippingAddress.postCode,
-                } }) : paymentMethod;
+                },
+            };
+        })();
         const newOrder = new Order_model_1.default({
             buyerId: isGuestOrder ? undefined : buyerId,
             guestEmail: isGuestOrder ? guestEmail.trim() : undefined,
@@ -195,7 +210,7 @@ const createOrder = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
         // Create a PaymentIntent
         const paymentIntent = yield stripe.paymentIntents.create({
             amount: Math.round(grandTotal * 100), // Stripe expects amount in cents
-            currency: "gbp",
+            currency: (0, ukValidation_js_1.currencyForCountry)(shippingAddress === null || shippingAddress === void 0 ? void 0 : shippingAddress.country),
             payment_method_types: ["card"],
             metadata: { orderId: newOrder._id.toString(), },
         });

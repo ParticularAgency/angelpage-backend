@@ -25,6 +25,7 @@ const affiliate_routes_js_1 = __importDefault(require("../api/affiliate/affiliat
 const socialPosts_routes_js_1 = __importDefault(require("../api/social/socialPosts.routes.js"));
 const ai_routes_js_1 = __importDefault(require("../api/ai/ai.routes.js"));
 const gallery_routes_js_1 = __importDefault(require("../api/gallery/gallery.routes.js"));
+const categories_routes_js_1 = __importDefault(require("../api/categories/categories.routes.js"));
 const router = (0, express_1.Router)();
 router.get("/health", (req, res) => {
     res.status(200).json({ message: "Server is running" });
@@ -36,6 +37,7 @@ router.use("/charity", charities_routes_1.default);
 router.use("/favorites", favorites_routes_1.default);
 router.use("/storefront", storefront_routes_1.default);
 router.use("/products", products_routes_1.default);
+router.use("/categories", categories_routes_js_1.default);
 router.use("/cart", cart_routes_1.default);
 router.use("/order", orders_routes_1.default);
 router.use("/email", email_routes_1.default);

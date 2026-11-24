@@ -12,9 +12,28 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.removeNotification = exports.markAllNotificationsAsRead = exports.getCurrentUserNotifications = exports.getAllUserNotifications = exports.createNotification = void 0;
+exports.removeNotification = exports.markAllNotificationsAsRead = exports.getCurrentUserNotifications = exports.getAllUserNotifications = exports.createNotification = exports.notificationWebhook = void 0;
 const Notification_model_1 = __importDefault(require("../../models/Notification.model"));
 const socket_1 = require("../../config/socket");
+const notifyUser_js_1 = require("../../utils/notifyUser.js");
+const notificationWebhook = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const secret = process.env.NOTIFICATION_WEBHOOK_SECRET;
+    const provided = req.get("x-angelpage-hook-secret");
+    if (!secret || provided !== secret) {
+        return res.status(401).json({ error: "Invalid hook secret." });
+    }
+    try {
+        const notification = yield (0, notifyUser_js_1.pushNotification)(req.body || {});
+        if (!notification) {
+            return res.status(400).json({ error: "Missing required fields." });
+        }
+        res.status(201).json({ success: true, notification });
+    }
+    catch (error) {
+        res.status(500).json({ error: "Failed to deliver notification." });
+    }
+});
+exports.notificationWebhook = notificationWebhook;
 // Create a notification (already implemented, just updated argument names for clarity)
 const createNotification = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {

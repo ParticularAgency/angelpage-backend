@@ -14,6 +14,10 @@ router.get("/mine", (0, auth_middleware_1.authMiddleware)(["ADMIN", "CHARITY", "
 router.get("/admin/all", (0, auth_middleware_1.authMiddleware)(["ADMIN"]), events_controller_1.getAdminEvents);
 router.get("/slug/:slug", events_controller_1.getEventBySlug);
 router.post("/:eventId/poll/vote", events_controller_1.voteEventPoll);
+router.post("/:eventId/donations", events_controller_1.createEventDonation);
+router.post("/donations/:donationId/confirm", events_controller_1.confirmEventDonation);
+router.get("/donations/:donationId/confirm", events_controller_1.confirmEventDonationFromQuery);
+router.get("/donations/:donationId/receipt", events_controller_1.getEventDonationReceipt);
 router.post("/", (0, auth_middleware_1.authMiddleware)(["ADMIN", "CHARITY", "CHARITY_STAFF"]), upload.single("coverImage"), events_controller_1.createEvent);
 router.patch("/:eventId/publish", (0, auth_middleware_1.authMiddleware)(["ADMIN"]), events_controller_1.publishEvent);
 router.patch("/:eventId", (0, auth_middleware_1.authMiddleware)(["ADMIN", "CHARITY", "CHARITY_STAFF"]), upload.single("coverImage"), events_controller_1.updateEvent);

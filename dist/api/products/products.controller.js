@@ -68,10 +68,37 @@ const productReviews_controller_js_1 = require("./productReviews.controller.js")
 const marketingJourneys_service_js_1 = require("../../services/marketingJourneys.service.js");
 const notifyCharity_1 = require("../../utils/notifyCharity");
 const cloudinary_1 = __importDefault(require("../../config/cloudinary"));
+const productSlug_js_1 = require("../../utils/productSlug.js");
+const profitSplit_js_1 = require("../../utils/profitSplit.js");
+const parseSellAreas = (raw) => {
+    if (!raw)
+        return [];
+    if (Array.isArray(raw))
+        return raw.map(String).filter(Boolean);
+    if (typeof raw === "string") {
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed))
+                return parsed.map(String).filter(Boolean);
+        }
+        catch (_a) {
+            /* comma-separated */
+        }
+        return raw
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean);
+    }
+    return [];
+};
+const parseFulfillmentType = (value) => {
+    const allowed = ["uk_shipping", "personal_delivery", "self_collect", "local_only"];
+    return allowed.includes(value) ? value : "uk_shipping";
+};
 // Create a new product
 const createProduct = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a, _b;
-    const { name, price, charityProfit, category, charity, additionalInfo, subcategory, condition, brand, material, color, size, weight, dimensions, selectedCharityName, selectedCharityId, status, quantity, socialPosting, } = req.body;
+    const { name, price, charityProfit, category, charity, additionalInfo, subcategory, condition, brand, material, color, size, weight, dimensions, selectedCharityName, selectedCharityId, status, quantity, socialPosting, sellerSharePercent, fulfillmentType, sellAreas, } = req.body;
     const { userId, role } = req.user;
     try {
         if (!name || !price || !category) {
@@ -144,11 +171,34 @@ const createProduct = (req, res) => __awaiter(void 0, void 0, void 0, function* 
         if (requestedStatus === "LIVE") {
             finalStatus = "PENDING_REVIEW";
         }
+        const slug = yield (0, productSlug_js_1.buildUniqueProductSlug)(name);
+        const numericPrice = parseFloat(price);
+        const sharePct = Math.min(100, Math.max(0, parseFloat(sellerSharePercent) || 0));
+        const split = (0, profitSplit_js_1.calculateProfitSplit)(numericPrice, sharePct);
+        const resolvedFulfillment = parseFulfillmentType(fulfillmentType);
+        const resolvedAreas = parseSellAreas(sellAreas);
+        if (resolvedFulfillment === "local_only" && resolvedAreas.length === 0) {
+            return res.status(400).json({
+                message: "Add at least one area for local-only listings.",
+            });
+        }
+        if (resolvedFulfillment === "uk_shipping" &&
+            finalStatus !== "DRAFT" &&
+            (!weight || !(parsedDimensions === null || parsedDimensions === void 0 ? void 0 : parsedDimensions.height) || !(parsedDimensions === null || parsedDimensions === void 0 ? void 0 : parsedDimensions.width))) {
+            return res.status(400).json({
+                message: "Weight and package dimensions are required for UK shipping listings.",
+            });
+        }
         // Create a new product
         const newProduct = new Product_model_1.default({
             name,
+            slug,
             price,
-            charityProfit,
+            charityProfit: split.charityProfit,
+            sellerSharePercent: sharePct,
+            sellerProfit: split.sellerProfit,
+            fulfillmentType: resolvedFulfillment,
+            sellAreas: resolvedAreas,
             category,
             charity: charityId,
             additionalInfo,
@@ -294,10 +344,14 @@ const getCategoryProducts = (req, res) => __awaiter(void 0, void 0, void 0, func
     const { isArchived, status } = req.query; // Optional query to handle archived state
     try {
         const query = Object.assign({}, (status && { status })); // Initialize query object
+        const exact = value => ({
+            $regex: `^${String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+            $options: "i",
+        });
         if (category)
-            query.category = category; // Add category to the query if provided
+            query.category = exact(category);
         if (subcategory)
-            query.subcategory = subcategory; // Add subcategory to the query if provided
+            query.subcategory = exact(subcategory);
         if (isArchived !== undefined) {
             query.isArchived = isArchived === "true"; // Handle archived filter
         }
@@ -309,9 +363,7 @@ const getCategoryProducts = (req, res) => __awaiter(void 0, void 0, void 0, func
             .populate("charity", "charityName charityID profileImage   addresses")
             .sort({ createdAt: -1 }); // Sort by creation date (newest first)
         if (!products || products.length === 0) {
-            return res
-                .status(404)
-                .json({ message: "No products found for the selected category." });
+            return res.status(200).json({ products: [] });
         }
         const productsWithAddress = products.map(product => {
             var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
@@ -403,16 +455,16 @@ const getRelatedProducts = (req, res) => __awaiter(void 0, void 0, void 0, funct
 exports.getRelatedProducts = getRelatedProducts;
 // Get Product Details (Public Access)
 const getProductDetails = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y;
     const { productId } = req.params;
     try {
-        // Fetch product details by ID, including populated fields for seller and charity
-        const product = yield Product_model_1.default.findById(productId)
+        const product = yield Product_model_1.default.findOne((0, productSlug_js_1.resolveProductLookup)(productId))
             .populate("seller", "_id firstName lastName charityName email profileImage  addresses")
             .populate("charity", "charityName email charityID storefrontId profileImage  addresses");
         if (!product) {
             return res.status(404).json({ message: "Product not found." });
         }
+        const resolvedId = product._id.toString();
         // Determine the seller type
         let sellerType = null;
         if (product.seller) {
@@ -422,14 +474,19 @@ const getProductDetails = (req, res) => __awaiter(void 0, void 0, void 0, functi
             sellerType = "CHARITY";
         }
         // Return product details with charity and seller info
-        const reviewSummary = yield (0, productReviews_controller_js_1.getReviewSummaryForProduct)(productId);
+        const reviewSummary = yield (0, productReviews_controller_js_1.getReviewSummaryForProduct)(resolvedId);
         return res.status(200).json({
             product: {
                 id: product._id,
+                slug: product.slug,
                 name: product.name,
                 additionalInfo: product.additionalInfo,
                 price: product.price,
                 charityProfit: product.charityProfit,
+                sellerSharePercent: (_a = product.sellerSharePercent) !== null && _a !== void 0 ? _a : 0,
+                sellerProfit: (_b = product.sellerProfit) !== null && _b !== void 0 ? _b : 0,
+                fulfillmentType: product.fulfillmentType || "uk_shipping",
+                sellAreas: product.sellAreas || [],
                 description: product.additionalInfo,
                 images: product.images,
                 videos: product.videos || [],
@@ -454,27 +511,27 @@ const getProductDetails = (req, res) => __awaiter(void 0, void 0, void 0, functi
                 status: product.status,
                 weight: product.weight,
                 dimensions: {
-                    height: ((_a = product.dimensions) === null || _a === void 0 ? void 0 : _a.height) || null,
-                    width: ((_b = product.dimensions) === null || _b === void 0 ? void 0 : _b.width) || null,
-                    depth: ((_c = product.dimensions) === null || _c === void 0 ? void 0 : _c.depth) || null,
+                    height: ((_c = product.dimensions) === null || _c === void 0 ? void 0 : _c.height) || null,
+                    width: ((_d = product.dimensions) === null || _d === void 0 ? void 0 : _d.width) || null,
+                    depth: ((_e = product.dimensions) === null || _e === void 0 ? void 0 : _e.depth) || null,
                 },
                 createdAt: product.createdAt,
                 charity: {
-                    id: (_d = product.charity) === null || _d === void 0 ? void 0 : _d._id,
-                    charityName: (_e = product.charity) === null || _e === void 0 ? void 0 : _e.charityName,
-                    charityID: (_f = product.charity) === null || _f === void 0 ? void 0 : _f.charityID,
-                    storefrontId: (_g = product.charity) === null || _g === void 0 ? void 0 : _g.storefrontId,
-                    profileImage: (_h = product.charity) === null || _h === void 0 ? void 0 : _h.profileImage,
-                    address: (_k = (_j = product.charity) === null || _j === void 0 ? void 0 : _j.addresses) === null || _k === void 0 ? void 0 : _k[0],
+                    id: (_f = product.charity) === null || _f === void 0 ? void 0 : _f._id,
+                    charityName: (_g = product.charity) === null || _g === void 0 ? void 0 : _g.charityName,
+                    charityID: (_h = product.charity) === null || _h === void 0 ? void 0 : _h.charityID,
+                    storefrontId: (_j = product.charity) === null || _j === void 0 ? void 0 : _j.storefrontId,
+                    profileImage: (_k = product.charity) === null || _k === void 0 ? void 0 : _k.profileImage,
+                    address: (_m = (_l = product.charity) === null || _l === void 0 ? void 0 : _l.addresses) === null || _m === void 0 ? void 0 : _m[0],
                 },
                 sellerType,
                 seller: {
-                    id: ((_l = product.seller) === null || _l === void 0 ? void 0 : _l._id) || ((_m = product.charity) === null || _m === void 0 ? void 0 : _m._id),
-                    firstName: (_o = product.seller) === null || _o === void 0 ? void 0 : _o.firstName,
-                    lastName: (_p = product.seller) === null || _p === void 0 ? void 0 : _p.lastName,
-                    charityName: (_q = product.charity) === null || _q === void 0 ? void 0 : _q.charityName,
-                    profileImage: ((_r = product.seller) === null || _r === void 0 ? void 0 : _r.profileImage) || ((_s = product.charity) === null || _s === void 0 ? void 0 : _s.profileImage),
-                    address: ((_u = (_t = product.seller) === null || _t === void 0 ? void 0 : _t.addresses) === null || _u === void 0 ? void 0 : _u[0]) || ((_w = (_v = product.charity) === null || _v === void 0 ? void 0 : _v.addresses) === null || _w === void 0 ? void 0 : _w[0]),
+                    id: ((_o = product.seller) === null || _o === void 0 ? void 0 : _o._id) || ((_p = product.charity) === null || _p === void 0 ? void 0 : _p._id),
+                    firstName: (_q = product.seller) === null || _q === void 0 ? void 0 : _q.firstName,
+                    lastName: (_r = product.seller) === null || _r === void 0 ? void 0 : _r.lastName,
+                    charityName: (_s = product.charity) === null || _s === void 0 ? void 0 : _s.charityName,
+                    profileImage: ((_t = product.seller) === null || _t === void 0 ? void 0 : _t.profileImage) || ((_u = product.charity) === null || _u === void 0 ? void 0 : _u.profileImage),
+                    address: ((_w = (_v = product.seller) === null || _v === void 0 ? void 0 : _v.addresses) === null || _w === void 0 ? void 0 : _w[0]) || ((_y = (_x = product.charity) === null || _x === void 0 ? void 0 : _x.addresses) === null || _y === void 0 ? void 0 : _y[0]),
                 },
             },
         });
@@ -524,7 +581,7 @@ const getListingProducts = (req, res) => __awaiter(void 0, void 0, void 0, funct
 exports.getListingProducts = getListingProducts;
 // Edit a product
 const editProduct = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b, _c, _d;
+    var _a, _b, _c, _d, _e;
     try {
         const { productId } = req.params;
         const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.userId;
@@ -544,8 +601,25 @@ const editProduct = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
         if (product.isArchived) {
             return res.status(400).json({ message: "Cannot edit archived products" });
         }
-        const _e = req.body, { socialPosting } = _e, rest = __rest(_e, ["socialPosting"]);
+        const _f = req.body, { socialPosting, sellerSharePercent, fulfillmentType, sellAreas } = _f, rest = __rest(_f, ["socialPosting", "sellerSharePercent", "fulfillmentType", "sellAreas"]);
         Object.assign(product, rest);
+        if (sellerSharePercent !== undefined) {
+            product.sellerSharePercent = Math.min(100, Math.max(0, parseFloat(sellerSharePercent) || 0));
+        }
+        if (fulfillmentType !== undefined) {
+            product.fulfillmentType = parseFulfillmentType(fulfillmentType);
+        }
+        if (sellAreas !== undefined) {
+            product.sellAreas = parseSellAreas(sellAreas);
+        }
+        if (product.price != null) {
+            const split = (0, profitSplit_js_1.calculateProfitSplit)(product.price, (_e = product.sellerSharePercent) !== null && _e !== void 0 ? _e : 0);
+            product.charityProfit = split.charityProfit;
+            product.sellerProfit = split.sellerProfit;
+        }
+        if (rest.name && rest.name !== product.name) {
+            product.slug = yield (0, productSlug_js_1.buildUniqueProductSlug)(rest.name, product._id);
+        }
         if (socialPosting !== undefined) {
             product.socialPosting = (0, socialPosting_service_js_1.parseSocialPostingInput)(socialPosting);
         }
@@ -826,7 +900,7 @@ const searchSuggest = (req, res) => __awaiter(void 0, void 0, void 0, function* 
             isArchived: false,
             $or: [{ name: regex }, { brand: regex }, { category: regex }],
         })
-            .select("name brand category price images")
+            .select("name brand category price images slug")
             .limit(Number(limit));
         res.status(200).json({ suggestions: products });
     }
@@ -912,6 +986,7 @@ const bulkCreateProducts = (req, res) => __awaiter(void 0, void 0, void 0, funct
                 : numericPrice * CHARITY_SHARE_RATE;
             const product = new Product_model_1.default({
                 name,
+                slug: yield (0, productSlug_js_1.buildUniqueProductSlug)(name),
                 price: numericPrice,
                 charityProfit,
                 category,

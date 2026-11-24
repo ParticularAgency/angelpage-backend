@@ -7,6 +7,7 @@ const express_1 = require("express");
 const auth_middleware_1 = require("../../middlewares/auth.middleware");
 const users_controller_1 = require("./users.controller");
 const multer_1 = __importDefault(require("multer"));
+const validation_middleware_1 = require("../../middlewares/validation.middleware");
 const router = (0, express_1.Router)();
 const upload = (0, multer_1.default)({ dest: "uploads/" });
 // Protected route to update profile image
@@ -15,7 +16,7 @@ router.get("/profile", (0, auth_middleware_1.authMiddleware)(), users_controller
 router.post("/profile/addresses", (0, auth_middleware_1.authMiddleware)(), users_controller_1.addAddress); // Add address
 router.put("/profile/addresses/:addressId", (0, auth_middleware_1.authMiddleware)(), users_controller_1.updateAddress); // Update address
 router.delete("/profile/addresses/:addressId", (0, auth_middleware_1.authMiddleware)(), users_controller_1.deleteAddress); // Delete address
-router.post("/profile/payments", (0, auth_middleware_1.authMiddleware)(), users_controller_1.addPayment); // Add address
-router.put("/profile/payments/:paymentId", (0, auth_middleware_1.authMiddleware)(), users_controller_1.updatePayment); // Update address
-router.delete("/profile/payments/:paymentId", (0, auth_middleware_1.authMiddleware)(), users_controller_1.deletePayment); // Delete address
+router.post("/profile/payments", (0, auth_middleware_1.authMiddleware)(), ...validation_middleware_1.validatePaymentMethod, users_controller_1.addPayment);
+router.put("/profile/payments/:paymentId", (0, auth_middleware_1.authMiddleware)(), ...validation_middleware_1.validatePaymentMethod, users_controller_1.updatePayment);
+router.delete("/profile/payments/:paymentId", (0, auth_middleware_1.authMiddleware)(), users_controller_1.deletePayment);
 exports.default = router;

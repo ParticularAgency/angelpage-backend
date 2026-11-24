@@ -56,6 +56,7 @@ const email_1 = require("../../utils/email");
 const stripe_1 = __importDefault(require("stripe"));
 const uuid_1 = require("uuid");
 const excel_js_1 = require("../../utils/excel.js");
+const sanitizePayment_js_1 = require("../../utils/sanitizePayment.js");
 const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });
 // Set up Multer for file uploads
 const upload = (0, multer_1.default)({
@@ -268,11 +269,18 @@ exports.deleteAddress = deleteAddress;
 const addPayment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { userId } = req.user;
-        const newPayment = req.body; // Assumes payment data is in the request body
+        if ((0, sanitizePayment_js_1.rejectsCardSecrets)(req.body)) {
+            return res.status(400).json({
+                message: "Card numbers and CVV must not be sent. Use Stripe Elements for card payments.",
+            });
+        }
+        const newPayment = (0, sanitizePayment_js_1.sanitizePaymentMethodInput)(req.body);
+        if (!newPayment.nameAccountHolder) {
+            return res.status(400).json({ message: "nameAccountHolder is required" });
+        }
         const user = yield Charity_model_1.default.findById(userId);
         if (!user)
             return res.status(404).json({ message: "User not found" });
-        // Add the new payment to the user's payments array
         user.payments.push(newPayment);
         yield user.save();
         res.status(201).json({
@@ -290,14 +298,18 @@ const updatePayment = (req, res) => __awaiter(void 0, void 0, void 0, function* 
     try {
         const { userId } = req.user;
         const { paymentId } = req.params;
-        const updatedPayment = req.body;
+        if ((0, sanitizePayment_js_1.rejectsCardSecrets)(req.body)) {
+            return res.status(400).json({
+                message: "Card numbers and CVV must not be sent. Use Stripe Elements for card payments.",
+            });
+        }
+        const updatedPayment = (0, sanitizePayment_js_1.sanitizePaymentMethodInput)(req.body);
         const user = yield Charity_model_1.default.findById(userId);
         if (!user)
             return res.status(404).json({ message: "User not found" });
         const payment = user.payments.id(paymentId);
         if (!payment)
             return res.status(404).json({ message: "Payment method not found" });
-        // Update the payment details
         Object.assign(payment, updatedPayment);
         yield user.save();
         res.status(200).json({

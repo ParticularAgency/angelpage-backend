@@ -12,13 +12,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.voteEventPoll = exports.updateEvent = exports.publishEvent = exports.createEvent = exports.getMyEvents = exports.getAdminEvents = exports.getEventBySlug = exports.getPublishedEvents = void 0;
+exports.confirmEventDonationFromQuery = exports.getEventDonationReceipt = exports.confirmEventDonation = exports.createEventDonation = exports.voteEventPoll = exports.updateEvent = exports.publishEvent = exports.createEvent = exports.getMyEvents = exports.getAdminEvents = exports.getEventBySlug = exports.getPublishedEvents = void 0;
 const adminRoles_js_1 = require("../../constants/adminRoles.js");
 const charityAccess_js_1 = require("../../utils/charityAccess.js");
 const CommunityEvent_model_1 = __importDefault(require("../../models/CommunityEvent.model"));
 const Charity_model_1 = __importDefault(require("../../models/Charity.model"));
 const Admin_model_1 = __importDefault(require("../../models/Admin.model"));
 const cloudinary_1 = __importDefault(require("../../config/cloudinary"));
+const eventDonation_service_js_1 = require("../../services/eventDonation.service.js");
+const EventDonation_model_1 = __importDefault(require("../../models/EventDonation.model"));
 const slugify = (text) => text
     .toLowerCase()
     .trim()
@@ -40,6 +42,19 @@ const parsePollOptions = (raw) => {
         /* ignore */
     }
     return [];
+};
+const parseFundAllocations = (raw) => {
+    if (!raw)
+        return [];
+    if (Array.isArray(raw))
+        return raw;
+    try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    }
+    catch (_a) {
+        return [];
+    }
 };
 const authorNameFor = (userId, role) => __awaiter(void 0, void 0, void 0, function* () {
     if (role === "CHARITY") {
@@ -152,6 +167,8 @@ const createEvent = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             donationGoal: Number(donationGoal) || 0,
             donationUrl: donationUrl || "",
             liveStreamUrl: liveStreamUrl || "",
+            charityId: (0, charityAccess_js_1.isCharityAccountRole)(role) ? charityAccountId : req.body.charityId || undefined,
+            fundAllocations: parseFundAllocations(req.body.fundAllocations),
             pollQuestion: pollQuestion || "",
             pollOptions: parsePollOptions(pollOptions),
             featuredOnHomepage: featuredOnHomepage === "true" || featuredOnHomepage === true,
@@ -200,6 +217,8 @@ const updateEvent = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             "featuredOnHomepage",
             "donationGoal",
             "donationRaised",
+            "charityId",
+            "fundAllocations",
         ];
         fields.forEach((f) => {
             if (req.body[f] !== undefined)
@@ -211,6 +230,9 @@ const updateEvent = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             event.endAt = new Date(req.body.endAt);
         if (req.body.pollOptions)
             event.pollOptions = parsePollOptions(req.body.pollOptions);
+        if (req.body.fundAllocations !== undefined) {
+            event.fundAllocations = parseFundAllocations(req.body.fundAllocations);
+        }
         if (req.body.status && (0, adminRoles_js_1.isAdminRole)(req.user.role))
             event.status = req.body.status;
         if ((_a = req.file) === null || _a === void 0 ? void 0 : _a.path) {
@@ -256,3 +278,106 @@ const voteEventPoll = (req, res) => __awaiter(void 0, void 0, void 0, function* 
     }
 });
 exports.voteEventPoll = voteEventPoll;
+const createEventDonation = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const { eventId } = req.params;
+        const { amount, fundId, donorName, donorEmail, isAnonymous } = req.body;
+        const { donation, event, clientSecret } = yield (0, eventDonation_service_js_1.createEventDonationCheckout)({
+            eventId,
+            amount,
+            fundId,
+            donorName,
+            donorEmail,
+            isAnonymous,
+            donorUserId: (_a = req.user) === null || _a === void 0 ? void 0 : _a.userId,
+        });
+        res.status(201).json({
+            donationId: donation._id,
+            donationNumber: donation.donationNumber,
+            clientSecret,
+            charityName: donation.charityName,
+            funds: (0, eventDonation_service_js_1.resolveEventFunds)(event),
+            event: {
+                _id: event._id,
+                title: event.title,
+                slug: event.slug,
+                donationGoal: event.donationGoal,
+                donationRaised: event.donationRaised,
+            },
+        });
+    }
+    catch (error) {
+        res.status(400).json({ message: error.message || "Could not start donation." });
+    }
+});
+exports.createEventDonation = createEventDonation;
+const confirmEventDonation = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c;
+    try {
+        const { donationId } = req.params;
+        const { paymentIntentId } = req.body;
+        const result = yield (0, eventDonation_service_js_1.confirmEventDonationPayment)(donationId, paymentIntentId);
+        res.status(200).json({
+            message: "Donation confirmed.",
+            receipt: result.receipt,
+            event: {
+                _id: (_a = result.event) === null || _a === void 0 ? void 0 : _a._id,
+                donationRaised: (_b = result.event) === null || _b === void 0 ? void 0 : _b.donationRaised,
+                donationGoal: (_c = result.event) === null || _c === void 0 ? void 0 : _c.donationGoal,
+            },
+        });
+    }
+    catch (error) {
+        res.status(400).json({ message: error.message || "Could not confirm donation." });
+    }
+});
+exports.confirmEventDonation = confirmEventDonation;
+const getEventDonationReceipt = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const donation = yield EventDonation_model_1.default.findById(req.params.donationId);
+        if (!donation) {
+            return res.status(404).json({ message: "Donation not found." });
+        }
+        const event = yield CommunityEvent_model_1.default.findById(donation.eventId);
+        res.status(200).json({
+            receipt: (0, eventDonation_service_js_1.buildDonationReceipt)(donation, event),
+            event: event
+                ? {
+                    slug: event.slug,
+                    title: event.title,
+                    donationRaised: event.donationRaised,
+                    donationGoal: event.donationGoal,
+                }
+                : null,
+        });
+    }
+    catch (error) {
+        res.status(500).json({ message: "Failed to fetch receipt." });
+    }
+});
+exports.getEventDonationReceipt = getEventDonationReceipt;
+const confirmEventDonationFromQuery = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c, _d, _e, _f, _g;
+    try {
+        const { donationId } = req.params;
+        const paymentIntentId = ((_a = req.body) === null || _a === void 0 ? void 0 : _a.paymentIntentId) ||
+            ((_b = req.query) === null || _b === void 0 ? void 0 : _b.payment_intent) ||
+            ((_c = req.query) === null || _c === void 0 ? void 0 : _c.paymentIntentId);
+        const result = yield (0, eventDonation_service_js_1.confirmEventDonationPayment)(donationId, paymentIntentId);
+        res.status(200).json({
+            message: "Donation confirmed.",
+            receipt: result.receipt,
+            event: {
+                slug: (_d = result.event) === null || _d === void 0 ? void 0 : _d.slug,
+                title: (_e = result.event) === null || _e === void 0 ? void 0 : _e.title,
+                donationRaised: (_f = result.event) === null || _f === void 0 ? void 0 : _f.donationRaised,
+                donationGoal: (_g = result.event) === null || _g === void 0 ? void 0 : _g.donationGoal,
+            },
+        });
+    }
+    catch (error) {
+        res.status(400).json({ message: error.message || "Could not confirm donation." });
+    }
+});
+exports.confirmEventDonationFromQuery = confirmEventDonationFromQuery;

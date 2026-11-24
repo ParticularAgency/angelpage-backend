@@ -106,12 +106,18 @@ const registerUser = (req, res) => __awaiter(void 0, void 0, void 0, function* (
     try {
         const _a = req.body, { role, firstName, lastName, email, country } = _a, userData = __rest(_a, ["role", "firstName", "lastName", "email", "country"]);
         const name = `${firstName || ""} ${lastName || ""}`.trim();
+        const PUBLIC_ROLES = ["USER", "CHARITY"];
+        if (!PUBLIC_ROLES.includes(role)) {
+            return res.status(403).json({
+                message: "Admin accounts cannot be created via public registration. Use the admin team panel or a bootstrap seed.",
+            });
+        }
         const { isUkCountry } = yield Promise.resolve().then(() => __importStar(require("../../utils/ukValidation.js")));
         const { DEFAULT_COUNTRY } = yield Promise.resolve().then(() => __importStar(require("../../constants/platformPolicy.js")));
         const accountCountry = country || DEFAULT_COUNTRY;
-        if (role !== "ADMIN" && !isUkCountry(accountCountry)) {
+        if (!isUkCountry(accountCountry)) {
             return res.status(400).json({
-                message: "Angelpage is UK-only. Registration is limited to UK residents.",
+                message: "Angelpage starts in the United States and also welcomes people in Canada and the United Kingdom.",
             });
         }
         const isEmailTaken = (yield User_model_1.default.findOne({ email })) ||
@@ -134,9 +140,6 @@ const registerUser = (req, res) => __awaiter(void 0, void 0, void 0, function* (
                     });
                 }
                 newUser = new Charity_model_1.default(Object.assign(Object.assign({}, userData), { firstName, lastName, name, email, role, registrationStatus: "REGISTERED", country: accountCountry }));
-                break;
-            case "ADMIN":
-                newUser = new Admin_model_1.default(Object.assign(Object.assign({}, userData), { firstName, lastName, email, role }));
                 break;
             default:
                 return res.status(400).json({ message: "Invalid role specified" });
@@ -647,10 +650,11 @@ const refreshAccessToken = (req, res) => __awaiter(void 0, void 0, void 0, funct
         }
         const tokenExtra = Object.assign(Object.assign({}, (decoded.charityId ? { charityId: decoded.charityId } : {})), (decoded.permissions ? { permissions: decoded.permissions } : {}));
         const token = generateAccessToken(decoded.userId, decoded.role, tokenExtra);
-        const newRefreshToken = generateRefreshToken(decoded.userId, decoded.role, tokenExtra);
+        // Keep the same refresh token until it expires to avoid session races
+        // that can invalidate the client copy and force an automatic logout.
         return res.status(200).json({
             token,
-            refreshToken: newRefreshToken,
+            refreshToken,
             userId: decoded.userId,
             role: decoded.role,
         });

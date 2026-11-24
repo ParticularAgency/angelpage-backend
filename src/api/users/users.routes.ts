@@ -30,8 +30,8 @@ router.post("/profile/addresses", authMiddleware(), addAddress); // Add address
 router.put("/profile/addresses/:addressId", authMiddleware(), updateAddress); // Update address
 router.delete("/profile/addresses/:addressId", authMiddleware(), deleteAddress); // Delete address
 
-router.post("/profile/payments", authMiddleware(), validatePaymentMethod, addPayment);
-router.put("/profile/payments/:paymentId", authMiddleware(), validatePaymentMethod, updatePayment);
+router.post("/profile/payments", authMiddleware(), ...validatePaymentMethod, addPayment);
+router.put("/profile/payments/:paymentId", authMiddleware(), ...validatePaymentMethod, updatePayment);
 router.delete("/profile/payments/:paymentId", authMiddleware(), deletePayment);
 
 export default router;

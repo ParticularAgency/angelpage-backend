@@ -12,19 +12,28 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.fetchUnreadMessagesForRecipient = exports.getUserDetailsWithRole = exports.markMessagesAsRead = exports.getUserConversations = exports.fetchRecipientMessages = exports.fetchConversation = exports.sendMessage = exports.startConversation = void 0;
+exports.fetchUnreadMessagesForRecipient = exports.messageWebhook = exports.getUserDetailsWithRole = exports.markMessagesAsRead = exports.getUserConversations = exports.fetchRecipientMessages = exports.fetchConversation = exports.sendMessage = exports.startConversation = void 0;
 const Conversation_model_1 = __importDefault(require("../../models/Conversation.model"));
 const Message_model_1 = __importDefault(require("../../models/Message.model"));
 const User_model_1 = __importDefault(require("../../models/User.model"));
 const Charity_model_1 = __importDefault(require("../../models/Charity.model"));
 const Product_model_1 = __importDefault(require("../../models/Product.model"));
 const notifyUser_js_1 = require("../../utils/notifyUser.js");
+const socket_1 = require("../../config/socket");
 const messaging_helpers_1 = require("../../utils/messaging.helpers");
+const emitTo = (room, event, payload) => {
+    try {
+        (0, socket_1.getIO)().to(room).emit(event, payload);
+    }
+    catch (error) {
+        console.error("Realtime emit skipped:", error.message);
+    }
+};
 const emitToConversation = (conversationId, event, payload) => {
-    getIO().to(`conversation:${conversationId}`).emit(event, payload);
+    emitTo(`conversation:${conversationId}`, event, payload);
 };
 const emitToUser = (userId, event, payload) => {
-    getIO().to(`user:${userId}`).emit(event, payload);
+    emitTo(`user:${userId}`, event, payload);
 };
 const getParticipantDetails = (participantId, participantType) => __awaiter(void 0, void 0, void 0, function* () {
     const type = (0, messaging_helpers_1.normalizeParticipantType)(participantType);
@@ -136,6 +145,8 @@ const sendMessage = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
             message: populatedMessage,
         };
         emitToConversation(conversationId, "new-message", payload);
+        emitToUser(recipientId, "new-message", payload);
+        emitToUser(senderId, "message-delivered", payload);
         emitToUser(recipientId, "conversation-updated", {
             conversationId,
             lastMessage: conversation.lastMessage,
@@ -147,9 +158,12 @@ const sendMessage = (req, res) => __awaiter(void 0, void 0, void 0, function* ()
         const senderName = ((_a = populatedMessage === null || populatedMessage === void 0 ? void 0 : populatedMessage.sender) === null || _a === void 0 ? void 0 : _a.firstName) ||
             ((_b = populatedMessage === null || populatedMessage === void 0 ? void 0 : populatedMessage.sender) === null || _b === void 0 ? void 0 : _b.charityName) ||
             "Someone";
+        const notifyRole = String(recipientType).toUpperCase().includes("CHARITY")
+            ? "CHARITY"
+            : "USER";
         (0, notifyUser_js_1.notifyNewMessage)({
             recipientId,
-            recipientType,
+            recipientType: notifyRole,
             senderName,
             conversationId,
         }).catch(console.error);
@@ -353,6 +367,15 @@ const getUserDetailsWithRole = (req, res) => __awaiter(void 0, void 0, void 0, f
     }
 });
 exports.getUserDetailsWithRole = getUserDetailsWithRole;
+const messageWebhook = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    const secret = process.env.NOTIFICATION_WEBHOOK_SECRET;
+    const provided = req.get("x-angelpage-hook-secret");
+    if (!secret || provided !== secret) {
+        return res.status(401).json({ message: "Invalid hook secret." });
+    }
+    return (0, exports.sendMessage)(req, res);
+});
+exports.messageWebhook = messageWebhook;
 const fetchUnreadMessagesForRecipient = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const { userId } = req.params;
     if (!userId) {

@@ -12,7 +12,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.searchByImageHandler = exports.smartSearchHandler = exports.suggestEventHandler = exports.enhanceBlogHandler = exports.enhanceListingHandler = exports.analyzeImage = exports.aiStatus = void 0;
 const gemini_service_js_1 = require("../../services/gemini.service.js");
 const aiStatus = (req, res) => {
-    res.json({ enabled: (0, gemini_service_js_1.isGeminiConfigured)(), model: process.env.GEMINI_MODEL || "gemini-2.0-flash" });
+    res.json({
+        enabled: (0, gemini_service_js_1.isGeminiConfigured)(),
+        model: process.env.GEMINI_MODEL || "gemini-2.0-flash-lite",
+        fallbackModel: process.env.GEMINI_FALLBACK_MODEL || "gemini-2.0-flash-lite",
+    });
 };
 exports.aiStatus = aiStatus;
 const analyzeImage = (req, res) => __awaiter(void 0, void 0, void 0, function* () {

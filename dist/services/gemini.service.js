@@ -16,7 +16,8 @@ exports.isGeminiConfigured = exports.searchProductsByImage = exports.smartProduc
 const Product_model_1 = __importDefault(require("../models/Product.model"));
 const productCategories_js_1 = require("../constants/productCategories.js");
 const getGeminiApiKey = () => (process.env.GEMINI_API_KEY || "").trim().replace(/^["']|["']$/g, "");
-const getGeminiModel = () => process.env.GEMINI_MODEL || "gemini-2.0-flash";
+const getGeminiModel = () => process.env.GEMINI_MODEL || "gemini-2.0-flash-lite";
+const getGeminiFallbackModel = () => process.env.GEMINI_FALLBACK_MODEL || "gemini-2.0-flash-lite";
 const categoryListText = () => productCategories_js_1.PRODUCT_CATEGORIES.map((c) => `${c.name}: ${c.subCategories.join(", ")}`).join("\n");
 const parseJsonResponse = (text) => {
     if (!text)
@@ -32,10 +33,55 @@ const parseJsonResponse = (text) => {
         throw new Error("AI returned invalid JSON");
     }
 };
-const callGemini = (_a) => __awaiter(void 0, [_a], void 0, function* ({ prompt, imageBase64, mimeType }) {
+const parseGeminiError = (status, errBody) => {
+    var _a;
+    let parsed;
+    try {
+        parsed = JSON.parse(errBody);
+    }
+    catch (_b) {
+        parsed = null;
+    }
+    const apiMessage = ((_a = parsed === null || parsed === void 0 ? void 0 : parsed.error) === null || _a === void 0 ? void 0 : _a.message) || errBody || "Unknown Gemini error";
+    if (status === 429) {
+        const retryMatch = apiMessage.match(/retry in ([\d.]+)s/i);
+        const retryHint = retryMatch
+            ? ` Try again in about ${Math.ceil(Number(retryMatch[1]))} seconds.`
+            : " Wait a minute and try again.";
+        return new Error(`Gemini API quota exceeded (free tier limit).${retryHint} Enable billing in Google AI Studio or switch GEMINI_MODEL to gemini-2.0-flash-lite.`);
+    }
+    if (status === 401 || status === 403) {
+        return new Error("Gemini API key is invalid or not authorized. Check GEMINI_API_KEY.");
+    }
+    if (status === 404) {
+        return new Error(`Gemini model not found. Set GEMINI_MODEL to a valid model (e.g. gemini-2.0-flash-lite).`);
+    }
+    return new Error(`AI service error (${status}): ${apiMessage.slice(0, 200)}`);
+};
+const parseRetryDelayMs = (errBody) => {
+    var _a, _b, _c;
+    try {
+        const parsed = JSON.parse(errBody);
+        const message = ((_a = parsed === null || parsed === void 0 ? void 0 : parsed.error) === null || _a === void 0 ? void 0 : _a.message) || "";
+        const match = message.match(/retry in ([\d.]+)s/i);
+        if (match)
+            return Math.min(Math.ceil(Number(match[1]) * 1000) + 500, 60000);
+        const retryInfo = (_c = (_b = parsed === null || parsed === void 0 ? void 0 : parsed.error) === null || _b === void 0 ? void 0 : _b.details) === null || _c === void 0 ? void 0 : _c.find((d) => String(d["@type"] || "").includes("RetryInfo"));
+        if (retryInfo === null || retryInfo === void 0 ? void 0 : retryInfo.retryDelay) {
+            const sec = parseInt(String(retryInfo.retryDelay), 10);
+            if (!Number.isNaN(sec))
+                return Math.min(sec * 1000 + 500, 60000);
+        }
+    }
+    catch (_d) {
+        /* ignore */
+    }
+    return 6000;
+};
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const callGeminiOnce = (_a) => __awaiter(void 0, [_a], void 0, function* ({ prompt, imageBase64, mimeType, model }) {
     var _b, _c, _d, _e, _f, _g, _h, _j, _k;
     const GEMINI_API_KEY = getGeminiApiKey();
-    const GEMINI_MODEL = getGeminiModel();
     if (!GEMINI_API_KEY) {
         throw new Error("GEMINI_API_KEY is not configured on the server.");
     }
@@ -48,7 +94,7 @@ const callGemini = (_a) => __awaiter(void 0, [_a], void 0, function* ({ prompt, 
             },
         });
     }
-    const res = yield fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`, {
+    const res = yield fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -61,13 +107,52 @@ const callGemini = (_a) => __awaiter(void 0, [_a], void 0, function* ({ prompt, 
     });
     if (!res.ok) {
         const errBody = yield res.text();
-        console.error("Gemini API error:", res.status, errBody);
-        throw new Error("AI service temporarily unavailable.");
+        console.error("Gemini API error:", res.status, model, errBody.slice(0, 500));
+        const err = parseGeminiError(res.status, errBody);
+        err.status = res.status;
+        err.body = errBody;
+        throw err;
     }
     const data = yield res.json();
     const text = ((_f = (_e = (_d = (_c = (_b = data === null || data === void 0 ? void 0 : data.candidates) === null || _b === void 0 ? void 0 : _b[0]) === null || _c === void 0 ? void 0 : _c.content) === null || _d === void 0 ? void 0 : _d.parts) === null || _e === void 0 ? void 0 : _e[0]) === null || _f === void 0 ? void 0 : _f.text) ||
         ((_k = (_j = (_h = (_g = data === null || data === void 0 ? void 0 : data.candidates) === null || _g === void 0 ? void 0 : _g[0]) === null || _h === void 0 ? void 0 : _h.content) === null || _j === void 0 ? void 0 : _j.parts) === null || _k === void 0 ? void 0 : _k.map((p) => p.text).join(""));
     return parseJsonResponse(text);
+});
+const callGemini = (_a) => __awaiter(void 0, [_a], void 0, function* ({ prompt, imageBase64, mimeType }) {
+    const primaryModel = getGeminiModel();
+    const fallbackModel = getGeminiFallbackModel();
+    const modelsToTry = primaryModel === fallbackModel
+        ? [primaryModel]
+        : [primaryModel, fallbackModel];
+    let lastError;
+    for (const model of modelsToTry) {
+        try {
+            return yield callGeminiOnce({ prompt, imageBase64, mimeType, model });
+        }
+        catch (err) {
+            lastError = err;
+            if (err.status === 429 && modelsToTry.indexOf(model) < modelsToTry.length - 1) {
+                console.warn(`Gemini quota hit for ${model}, trying ${fallbackModel}...`);
+                continue;
+            }
+            if (err.status === 429) {
+                const delayMs = parseRetryDelayMs(err.body || "");
+                console.warn(`Gemini 429 — retrying ${model} after ${delayMs}ms`);
+                yield sleep(delayMs);
+                try {
+                    return yield callGeminiOnce({ prompt, imageBase64, mimeType, model });
+                }
+                catch (retryErr) {
+                    lastError = retryErr;
+                }
+            }
+            if (err.status === 404 && modelsToTry.indexOf(model) < modelsToTry.length - 1) {
+                continue;
+            }
+            throw err;
+        }
+    }
+    throw lastError || new Error("AI service temporarily unavailable.");
 });
 const analyzeProductImage = (imageBuffer, mimeType) => __awaiter(void 0, void 0, void 0, function* () {
     const base64 = imageBuffer.toString("base64");
@@ -203,10 +288,35 @@ const searchProductsByImage = (imageBuffer, mimeType) => __awaiter(void 0, void 
     const mongoQuery = buildProductSearchQuery(terms);
     let products = [];
     if (mongoQuery) {
-        products = yield Product_model_1.default.find(mongoQuery)
-            .select("name brand category subcategory price images condition")
-            .limit(16)
+        const found = yield Product_model_1.default.find(mongoQuery)
+            .select("name slug brand category subcategory price images condition")
+            .limit(40)
             .lean();
+        const scoreOf = (product) => {
+            const name = String(product.name || "").toLowerCase();
+            const brand = String(product.brand || "").toLowerCase();
+            const category = String(product.category || "").toLowerCase();
+            const subcategory = String(product.subcategory || "").toLowerCase();
+            let score = 0;
+            for (const raw of terms) {
+                const term = String(raw).trim().toLowerCase();
+                if (term.length < 2)
+                    continue;
+                if (name.includes(term))
+                    score += 6;
+                if (brand && (brand === term || brand.includes(term)))
+                    score += 4;
+                if (category === term || category.includes(term))
+                    score += 5;
+                if (subcategory === term || subcategory.includes(term))
+                    score += 4;
+            }
+            return score;
+        };
+        products = found
+            .map((product) => (Object.assign(Object.assign({}, product), { matchScore: scoreOf(product) })))
+            .sort((a, b) => b.matchScore - a.matchScore)
+            .slice(0, 8);
     }
     return {
         analysis,

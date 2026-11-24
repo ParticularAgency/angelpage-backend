@@ -79,6 +79,7 @@ const rateLimit_middleware_js_1 = require("./middlewares/rateLimit.middleware.js
 require("./config/jwtSecret.js");
 const emailConfig_js_1 = require("./utils/emailConfig.js");
 const stripe_webhook_js_1 = require("./api/webhooks/stripe.webhook.js");
+const webhooks_controller_js_1 = require("./api/webhooks/webhooks.controller.js");
 (0, emailConfig_js_1.validateEmailConfig)();
 const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
@@ -91,8 +92,9 @@ const corsOptions = {
 };
 app.use((0, cors_1.default)(corsOptions));
 app.options('*', (0, cors_1.default)(corsOptions)); // Handle preflight requests
-// Stripe webhooks require the raw request body for signature verification
+// Stripe + Shopify webhooks require the raw request body for signature verification
 app.post('/api/webhooks/stripe', express_1.default.raw({ type: 'application/json' }), stripe_webhook_js_1.handleStripeWebhook);
+app.post('/api/webhooks/shopify', express_1.default.raw({ type: 'application/json' }), webhooks_controller_js_1.handleShopifyWebhook);
 // ✅ Middleware
 app.use(body_parser_1.default.json());
 app.use(body_parser_1.default.urlencoded({ extended: true }));

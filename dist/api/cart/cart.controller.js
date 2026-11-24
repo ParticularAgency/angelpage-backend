@@ -77,7 +77,7 @@ const getProductOnCart = (req, res) => __awaiter(void 0, void 0, void 0, functio
     try {
         const cart = yield Cart_model_1.default.findOne({ userId }).populate({
             path: "items.productId",
-            select: "name price weight dimensions selectedCharityName selectedCharityId brand images seller charity charityProfit checkoutMode affiliateUrl ebayAffiliateUrl",
+            select: "name price weight dimensions selectedCharityName selectedCharityId brand images seller charity charityProfit sellerSharePercent sellerProfit fulfillmentType sellAreas checkoutMode affiliateUrl ebayAffiliateUrl slug",
             populate: [
                 {
                     path: "seller",

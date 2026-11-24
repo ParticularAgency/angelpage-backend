@@ -4,9 +4,10 @@ const express_1 = require("express");
 const auth_controller_1 = require("./auth.controller");
 const auth_middleware_1 = require("../../middlewares/auth.middleware");
 const captcha_middleware_js_1 = require("../../middlewares/captcha.middleware.js");
+const validation_middleware_1 = require("../../middlewares/validation.middleware");
 const router = (0, express_1.Router)();
 // Public routes
-router.post("/register", captcha_middleware_js_1.verifyCaptcha, auth_controller_1.registerUser);
+router.post("/register", captcha_middleware_js_1.verifyCaptcha, validation_middleware_1.validateRegister, auth_controller_1.registerUser);
 router.post("/verify-email", auth_controller_1.verifyEmail);
 router.post("/resend-verify-email", auth_controller_1.resendVerificationEmail);
 router.get("/profile/:email", auth_controller_1.fetchUserProfile);

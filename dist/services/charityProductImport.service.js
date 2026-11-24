@@ -17,6 +17,7 @@ exports.upsertImportedProducts = upsertImportedProducts;
 const Product_model_1 = __importDefault(require("../models/Product.model"));
 const Charity_model_1 = __importDefault(require("../models/Charity.model"));
 const platformPolicy_js_1 = require("../constants/platformPolicy.js");
+const productSlug_js_1 = require("../utils/productSlug.js");
 const MAX_SYNC_PRODUCTS = 50;
 /**
  * Normalize external catalog item → Mongo Product fields.
@@ -97,7 +98,7 @@ function upsertImportedProducts(charityId_1, items_1) {
             const status = autoPublish ? "LIVE" : "PENDING_REVIEW";
             const stock = normalized.quantity;
             if (!product) {
-                product = new Product_model_1.default(Object.assign(Object.assign({}, normalized), { stockRemaining: stock, status, isArchived: false }));
+                product = new Product_model_1.default(Object.assign(Object.assign({}, normalized), { slug: yield (0, productSlug_js_1.buildUniqueProductSlug)(normalized.name), stockRemaining: stock, status, isArchived: false }));
                 yield product.save();
                 yield Charity_model_1.default.findByIdAndUpdate(charity._id, {
                     $addToSet: { listedProducts: product._id },
@@ -105,6 +106,7 @@ function upsertImportedProducts(charityId_1, items_1) {
                 imported.push(product);
             }
             else {
+                const nameChanged = normalized.name && normalized.name !== product.name;
                 Object.assign(product, {
                     name: normalized.name,
                     price: normalized.price,
@@ -122,6 +124,9 @@ function upsertImportedProducts(charityId_1, items_1) {
                     status: product.status === "REMOVED" ? status : product.status,
                     isArchived: false,
                 });
+                if (nameChanged) {
+                    product.slug = yield (0, productSlug_js_1.buildUniqueProductSlug)(normalized.name, product._id);
+                }
                 yield product.save();
                 updated.push(product);
             }

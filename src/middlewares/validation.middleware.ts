@@ -1,23 +1,24 @@
-import { Request, Response, NextFunction } from "express";
+import { Request, Response, NextFunction, RequestHandler } from "express";
 import { body, validationResult } from "express-validator";
 
-export const handleValidationErrors = (
+export const handleValidationErrors: RequestHandler = (
 	req: Request,
 	res: Response,
 	next: NextFunction,
 ) => {
 	const errors = validationResult(req);
 	if (!errors.isEmpty()) {
-		return res.status(400).json({
+		res.status(400).json({
 			message: "Validation failed",
 			errors: errors.array(),
 		});
+		return;
 	}
 	next();
 };
 
 /** Public registration — USER | CHARITY only */
-export const validateRegister = [
+export const validateRegister: RequestHandler[] = [
 	body("role")
 		.isIn(["USER", "CHARITY"])
 		.withMessage("Role must be USER or CHARITY"),
@@ -33,7 +34,7 @@ export const validateRegister = [
 ];
 
 /** Profile payment methods — billing metadata only */
-export const validatePaymentMethod = [
+export const validatePaymentMethod: RequestHandler[] = [
 	body("nameAccountHolder")
 		.isString()
 		.trim()

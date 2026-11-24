@@ -157,12 +157,18 @@ const resolveDispute = (req, res) => __awaiter(void 0, void 0, void 0, function*
             order.escrowStatus = "HELD";
         }
         yield order.save();
+        let releaseResult = null;
         if (shouldRelease) {
             try {
-                yield (0, escrowAutoRelease_service_js_1.releaseEscrowForOrder)(orderId);
+                releaseResult = yield (0, escrowAutoRelease_service_js_1.releaseEscrowForOrder)(orderId);
             }
             catch (e) {
-                console.error("resolveDispute escrow release:", e.message);
+                console.error("resolveDispute release:", e);
+                return res.status(200).json({
+                    message: "Dispute resolved, but escrow release failed. Release manually from the escrow queue.",
+                    order,
+                    escrowError: e.message,
+                });
             }
         }
         const { logAudit } = yield Promise.resolve().then(() => __importStar(require("../../utils/auditLog.js")));
@@ -172,9 +178,15 @@ const resolveDispute = (req, res) => __awaiter(void 0, void 0, void 0, function*
             action: "DISPUTE_RESOLVED",
             entityType: "order",
             entityId: orderId,
-            details: { resolution, releaseEscrow: !!shouldRelease },
+            meta: { resolution, shouldRelease: Boolean(shouldRelease) },
         });
-        res.status(200).json({ message: "Dispute resolved.", order });
+        res.status(200).json({
+            message: shouldRelease
+                ? "Dispute resolved and escrow release attempted."
+                : "Dispute resolved. Escrow remains held until release.",
+            order: yield Order_model_1.default.findById(orderId),
+            releaseResult,
+        });
     }
     catch (error) {
         console.error("resolveDispute:", error);

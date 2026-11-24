@@ -40,11 +40,20 @@ const productImageSchema = new mongoose_1.Schema({
 });
 const productSchema = new mongoose_1.Schema({
     name: { type: String, required: false },
+    slug: { type: String, unique: true, sparse: true, lowercase: true, trim: true },
     selectedCharityName: { type: String, required: false },
     selectedCharityId: { type: String, required: false },
     additionalInfo: { type: String, required: false },
     price: { type: Number, required: false },
     charityProfit: { type: Number, required: false },
+    sellerSharePercent: { type: Number, default: 0, min: 0, max: 100 },
+    sellerProfit: { type: Number, required: false },
+    fulfillmentType: {
+        type: String,
+        enum: ["uk_shipping", "personal_delivery", "self_collect", "local_only"],
+        default: "uk_shipping",
+    },
+    sellAreas: { type: [String], default: [] },
     category: { type: String, required: false },
     subcategory: { type: String, required: false },
     condition: { type: String, required: false },

@@ -56,6 +56,7 @@ const Charity_model_1 = __importDefault(require("../../models/Charity.model"));
 const Product_model_1 = __importDefault(require("../../models/Product.model"));
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const stripe_1 = __importDefault(require("stripe"));
+const sanitizePayment_js_1 = require("../../utils/sanitizePayment.js");
 const stripe = new stripe_1.default(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });
 const MINIMUM_THRESHOLD = 0.5;
 // Utility to handle unknown error types
@@ -247,7 +248,15 @@ const addPayment = (req, res) => __awaiter(void 0, void 0, void 0, function* () 
     var _a;
     try {
         const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.userId;
-        const newPayment = req.body;
+        if ((0, sanitizePayment_js_1.rejectsCardSecrets)(req.body)) {
+            return res.status(400).json({
+                message: "Card numbers and CVV must not be sent. Use Stripe Elements for card payments.",
+            });
+        }
+        const newPayment = (0, sanitizePayment_js_1.sanitizePaymentMethodInput)(req.body);
+        if (!newPayment.nameAccountHolder) {
+            return res.status(400).json({ message: "nameAccountHolder is required" });
+        }
         const user = yield Admin_model_1.default.findById(userId);
         if (!user) {
             res.status(404).json({ message: "User not found" });
@@ -275,7 +284,12 @@ const updatePayment = (req, res) => __awaiter(void 0, void 0, void 0, function* 
     try {
         const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.userId;
         const { paymentId } = req.params;
-        const updatedPayment = req.body;
+        if ((0, sanitizePayment_js_1.rejectsCardSecrets)(req.body)) {
+            return res.status(400).json({
+                message: "Card numbers and CVV must not be sent. Use Stripe Elements for card payments.",
+            });
+        }
+        const updatedPayment = (0, sanitizePayment_js_1.sanitizePaymentMethodInput)(req.body);
         const user = yield Admin_model_1.default.findById(userId);
         if (!user) {
             res.status(404).json({ message: "User not found" });
