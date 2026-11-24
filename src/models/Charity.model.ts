@@ -13,9 +13,7 @@ interface IAddress {
 
 interface IPaymentMethod {
 	nameAccountHolder: string;
-	accountNumber: string;
-	expiryDate: string;
-	cvvNumber: string;
+	stripePaymentMethodId?: string;
 	billingAddress: {
 		name: string;
 		address: string;
@@ -44,6 +42,8 @@ export interface ICharity extends Document {
 	profileCompleted: boolean;
 	dateBirth: string;
 	verified: boolean;
+	canBlog?: boolean;
+	country?: string;
 	addresses: IAddress[];
 	payments: IPaymentMethod[];
 	storefrontId: string;
@@ -55,6 +55,20 @@ export interface ICharity extends Document {
 	verificationCode?: string;
 	verificationExpiry?: Date;
 	stripeAccountId?: string; // Stripe Account ID
+	productIntegration?: {
+		productSource?: "manual" | "shopify" | "woocommerce" | "wordpress" | "scrape" | "api_key";
+		storeUrl?: string;
+		shopifyDomain?: string;
+		apiKeyEncrypted?: string;
+		apiSecretEncrypted?: string;
+		autoSync?: boolean;
+		lastSyncAt?: Date;
+		lastSyncStatus?: "idle" | "running" | "success" | "failed";
+		lastSyncError?: string;
+		lastImportedCount?: number;
+		lastUpdatedCount?: number;
+		totalSyncedProducts?: number;
+	};
 	totalEarned: number; // Total funds accumulated for charity
 	upcomingFunds: number;
 	totalHeldFunds: number; // Total funds held for payout
@@ -74,12 +88,10 @@ const addressSchema = new Schema<IAddress>({
 	postcode: { type: String, required: true },
 });
 
-// Payment method schema for embedding
+// Payment method schema — billing metadata only (no PAN/CVV)
 const paymentMethodSchema = new Schema<IPaymentMethod>({
 	nameAccountHolder: { type: String, required: true },
-	accountNumber: { type: String, required: true },
-	expiryDate: { type: String, required: true },
-	cvvNumber: { type: String, required: true },
+	stripePaymentMethodId: { type: String, default: "" },
 	billingAddress: {
 		name: {
 			type: String,
@@ -134,6 +146,8 @@ const charitySchema = new Schema<ICharity>(
 		profileCompleted: { type: Boolean, default: false },
 		dateBirth: { type: String, required: false },
 		verified: { type: Boolean, default: false },
+		canBlog: { type: Boolean, default: false },
+		country: { type: String, default: "United Kingdom" },
 		addresses: [addressSchema],
 		payments: [paymentMethodSchema],
 		charityName: { type: String, required: false },
@@ -144,7 +158,29 @@ const charitySchema = new Schema<ICharity>(
 		description: { type: String, required: false },
 		storefrontId: { type: String, unique: true, required: false },
 		stripeAccountId: { type: String, required: false },
-		registrationStatus: { type: String, default: "PENDING" },
+		productIntegration: {
+			productSource: {
+				type: String,
+				enum: ["manual", "shopify", "woocommerce", "wordpress", "scrape", "api_key"],
+				default: "manual",
+			},
+			storeUrl: { type: String, default: "" },
+			shopifyDomain: { type: String, default: "" },
+			apiKeyEncrypted: { type: String, select: false },
+			apiSecretEncrypted: { type: String, select: false },
+			autoSync: { type: Boolean, default: true },
+			lastSyncAt: { type: Date },
+			lastSyncStatus: {
+				type: String,
+				enum: ["idle", "running", "success", "failed"],
+				default: "idle",
+			},
+			lastSyncError: { type: String, default: "" },
+			lastImportedCount: { type: Number, default: 0 },
+			lastUpdatedCount: { type: Number, default: 0 },
+			totalSyncedProducts: { type: Number, default: 0 },
+		},
+		registrationStatus: { type: String, default: "REGISTERED" },
 		totalEarned: { type: Number, default: 0 },
 		totalHeldFunds: { type: Number, default: 0 },
 		upcomingFunds: { type: Number, default: 0 },

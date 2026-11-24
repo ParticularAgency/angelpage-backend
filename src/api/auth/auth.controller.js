@@ -3,6 +3,9 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import User from "../../models/User.model";
 import Charity from "../../models/Charity.model";
+import CharityStaff from "../../models/CharityStaff.model";
+import { resolveAdminPermissions } from "../../constants/adminPermissions.js";
+import { resolveCharityStaffPermissions } from "../../constants/charityPermissions.js";
 import Admin from "../../models/Admin.model";
 import LoginActivity from '../../models/LoginActivity.model';
 import {
@@ -13,12 +16,42 @@ import {
 	sendPasswordResetCompletionEmail,
 	sendEmail,
 } from "../../utils/email";
+import { isAdminRole } from "../../constants/adminRoles.js";
+import {
+	fireMarketingEvent,
+	JOURNEY_EVENTS,
+} from "../../services/marketingJourneys.service.js";
+import { linkGuestOrdersToAccount } from "../../services/guestOrderLink.service.js";
+import { JWT_SECRET } from "../../config/jwtSecret.js";
 
-const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
+const ACCESS_TOKEN_EXPIRY = process.env.ACCESS_TOKEN_EXPIRY || "30m";
+const REFRESH_TOKEN_EXPIRY = process.env.REFRESH_TOKEN_EXPIRY || "7d";
 
-// Utility to generate a token
-const generateToken = (userId, role) => {
-  return jwt.sign({ userId, role }, JWT_SECRET, { expiresIn: "1d" });
+const generateAccessToken = (userId, role, extra = {}) =>
+	jwt.sign({ userId, role, type: "access", ...extra }, JWT_SECRET, {
+		expiresIn: ACCESS_TOKEN_EXPIRY,
+	});
+
+const generateRefreshToken = (userId, role, extra = {}) =>
+	jwt.sign({ userId, role, type: "refresh", ...extra }, JWT_SECRET, {
+		expiresIn: REFRESH_TOKEN_EXPIRY,
+	});
+
+// Backwards-compatible alias
+const generateToken = generateAccessToken;
+
+const buildAuthExtras = (user, charityId) => {
+	const extra = {};
+	if (charityId) extra.charityId = charityId;
+	if (user.role === "CHARITY_STAFF") {
+		extra.permissions = resolveCharityStaffPermissions(
+			user.staffRole,
+			user.permissions,
+		);
+	} else if (isAdminRole(user.role)) {
+		extra.permissions = resolveAdminPermissions(user.role, user.permissions);
+	}
+	return extra;
 };
 
 
@@ -38,8 +71,26 @@ const generateVerificationCode = () => {
 // Register User
 export const registerUser = async (req, res) => {
   try {
-		const { role, firstName, lastName, email, ...userData } = req.body;
+		const { role, firstName, lastName, email, country, ...userData } = req.body;
 		const name = `${firstName || ""} ${lastName || ""}`.trim();
+
+		const PUBLIC_ROLES = ["USER", "CHARITY"];
+		if (!PUBLIC_ROLES.includes(role)) {
+			return res.status(403).json({
+				message:
+					"Admin accounts cannot be created via public registration. Use the admin team panel or a bootstrap seed.",
+			});
+		}
+
+		const { isUkCountry } = await import("../../utils/ukValidation.js");
+		const { DEFAULT_COUNTRY } = await import("../../constants/platformPolicy.js");
+		const accountCountry = country || DEFAULT_COUNTRY;
+		if (!isUkCountry(accountCountry)) {
+			return res.status(400).json({
+				message:
+					"Angelpage starts in the United States and also welcomes people in Canada and the United Kingdom.",
+			});
+		}
         
 		const isEmailTaken =
 			(await User.findOne({ email })) ||
@@ -54,13 +105,15 @@ export const registerUser = async (req, res) => {
 		let newUser;
 		switch (role) {
 			case "USER":
-				newUser = new User({ ...userData, firstName, lastName, name, email, role });
+				newUser = new User({ ...userData, firstName, lastName, name, email, role, country: accountCountry });
 				break;
-			case "CHARITY":
-				newUser = new Charity({ ...userData, firstName, lastName, name, email, role, registrationStatus: "REGISTERED" });
-				break;
-			case "ADMIN":
-				newUser = new Admin({ ...userData, firstName, lastName, email, role });
+		case "CHARITY":
+				if (!userData.charityNumber) {
+					return res.status(400).json({
+						message: "Charity registration number is required.",
+					});
+				}
+				newUser = new Charity({ ...userData, firstName, lastName, name, email, role, registrationStatus: "REGISTERED", country: accountCountry });
 				break;
 			default:
 				return res.status(400).json({ message: "Invalid role specified" });
@@ -75,20 +128,36 @@ export const registerUser = async (req, res) => {
         
 		await newUser.save(); 
 
-		// Send email verification link
-		await sendVerificationEmail({
-			email: newUser.email,
-			firstName,
-			verificationCode,
-		});
+		if (role === "USER") {
+			try {
+				await linkGuestOrdersToAccount(newUser._id, email, role);
+			} catch (linkErr) {
+				console.error("Guest order link on register failed:", linkErr);
+			}
+		}
 
-		// Send welcome email
-		await sendWelcomeEmail({
-			email: newUser.email,
-			firstName: newUser.firstName,
-			userId: newUser._id.toString(),
-			role: newUser.role, 
-		});
+		try {
+			await sendVerificationEmail({
+				email: newUser.email,
+				firstName,
+				verificationCode,
+			});
+			await sendWelcomeEmail({
+				email: newUser.email,
+				firstName: newUser.firstName,
+				userId: newUser._id.toString(),
+				role: newUser.role,
+			});
+			fireMarketingEvent(JOURNEY_EVENTS.USER_REGISTERED, {
+				email: newUser.email,
+				firstName: newUser.firstName,
+				role: newUser.role,
+				userId: newUser._id.toString(),
+			});
+		} catch (emailError) {
+			console.error("Registration emails failed (account still created):", emailError);
+		}
+
 		const token = jwt.sign(
 			{ userId: newUser._id, role: newUser.role },
 			JWT_SECRET,
@@ -205,12 +274,32 @@ export const loginUser = async (req, res) => {
 
 		// Retrieve the user based on role
 		let user;
+		let charityId;
 		switch (role) {
 			case "USER":
 				user = await User.findOne({ email });
 				break;
 			case "CHARITY":
 				user = await Charity.findOne({ email });
+				if (!user) {
+					const staff = await CharityStaff.findOne({
+						email,
+						active: { $ne: false },
+					});
+					if (staff) {
+						user = staff;
+						charityId = staff.parentCharityId?.toString();
+					}
+				}
+				break;
+			case "CHARITY_STAFF":
+				user = await CharityStaff.findOne({
+					email,
+					active: { $ne: false },
+				});
+				if (user) {
+					charityId = user.parentCharityId?.toString();
+				}
 				break;
 			case "ADMIN":
 				user = await Admin.findOne({ email });
@@ -223,25 +312,52 @@ export const loginUser = async (req, res) => {
 			return res.status(400).json({ message: "Invalid email or password" });
 		}
 
+		if (user.role !== role) {
+			if (!(role === "ADMIN" && isAdminRole(user.role))) {
+				if (
+					!(role === "CHARITY" && user.role === "CHARITY_STAFF") &&
+					!(role === "CHARITY_STAFF" && user.role === "CHARITY_STAFF")
+				) {
+					return res.status(403).json({
+						message: `This account is registered as ${user.role}. Please sign in with the correct account type.`,
+					});
+				}
+			}
+		}
+
 		// Compare the password using bcrypt
 		const isMatch = await comparePassword(password, user.password);
-		console.log("Login Attempt Debug:", {
-			inputPassword: password,
-			storedHashedPassword: user.password,
-			isMatch,
-		});
+
+		if (!isMatch) {
+			return res.status(400).json({ message: "Invalid email or password" });
+		}
+
 	    // Record login activity
 		await LoginActivity.create({
 			userId: user._id,
 			role: user.role,
 		});
 
-		if (!isMatch) {
-			return res.status(400).json({ message: "Invalid email or password" });
+		if (user.role === "USER") {
+			try {
+				await linkGuestOrdersToAccount(user._id, user.email, user.role);
+			} catch (linkErr) {
+				console.error("Guest order link on login failed:", linkErr);
+			}
 		}
 
-		// Generate a JWT token
-		const token = generateToken(user._id.toString(), user.role);
+		// Generate tokens
+		const tokenExtra = buildAuthExtras(user, charityId);
+		const token = generateAccessToken(
+			user._id.toString(),
+			user.role,
+			tokenExtra,
+		);
+		const refreshToken = generateRefreshToken(
+			user._id.toString(),
+			user.role,
+			tokenExtra,
+		);
 		// Send welcome back email
 		const now = new Date();
 		if (
@@ -249,15 +365,25 @@ export const loginUser = async (req, res) => {
 			now.getTime() - user.lastWelcomeBackEmailSent.getTime() >
 				24 * 60 * 60 * 1000
 		) {
-			await sendWelcomeBackEmail({
-				email: user.email,
-				firstName: user.firstName,
-			});
-			// Update the timestamp for the last email sent
-			user.lastWelcomeBackEmailSent = now;
+			// await sendWelcomeBackEmail({
+			// 	email: user.email,
+			// 	firstName: user.firstName,
+			// });
+			// // Update the timestamp for the last email sent
+			// user.lastWelcomeBackEmailSent = now;
 			await user.save();
 		}
-		res.status(200).json({ message: "Login successful", user, token });
+		res.status(200).json({
+			message: "Login successful",
+			user: {
+				...user.toObject(),
+				charityId,
+				staffRole: user.staffRole,
+				permissions: tokenExtra.permissions || [],
+			},
+			token,
+			refreshToken,
+		});
 	} catch (error) {
     console.error("Error during login:", error);
     res.status(500).json({ message: "Login failed", error: error.message });
@@ -286,7 +412,22 @@ export const requestPasswordReset = async (req, res) => {
 		}
 
 		if (!user) {
-			return res.status(404).json({ message: "User not found" });
+			return res.status(404).json({
+				message:
+					"No account found for this email and role. Select the correct account type (User, Charity, or Admin).",
+			});
+		}
+
+		if (role === "ADMIN" && user.role !== role) {
+			// Sub-admin roles (OPS_ADMIN, etc.) — allow reset via Admin selector
+			const { isAdminRole } = await import("../../constants/adminRoles.js");
+			if (!isAdminRole(user.role)) {
+				return res.status(404).json({ message: "User not found" });
+			}
+		} else if (user.role !== role) {
+			return res.status(404).json({
+				message: `No ${role} account found for this email. Try a different account type.`,
+			});
 		}
 
 		// Create a reset token with a short expiration (e.g., 15 minutes)
@@ -304,8 +445,12 @@ export const requestPasswordReset = async (req, res) => {
 
 		res.json({ message: "Password reset email sent" });
 	} catch (error) {
-		console.error("Error sending password reset email:", error);
-		res.status(500).json({ message: "Failed to send password reset email" });
+		console.error("Error sending password reset email:", error.response?.body || error.message || error);
+		const hint =
+			error.message?.includes("Failed to send")
+				? " Email could not be sent — check SENDGRID_FROM is verified on angelpage.co.uk."
+				: "";
+		res.status(500).json({ message: `Failed to send password reset email.${hint}` });
 	}
 };
 
@@ -523,18 +668,193 @@ export const checkToken = (req, res) => {
 	const token = authHeader.replace("Bearer ", "");
 
 	try {
-		// Verify the token
 		const decoded = jwt.verify(token, JWT_SECRET);
 
-		// Check if token has expired (optional, since jwt.verify does this)
+		if (decoded.type === "refresh") {
+			return res.status(401).json({ message: "Access token required." });
+		}
+
 		if (Date.now() >= decoded.exp * 1000) {
 			return res.status(401).json({ message: "Token has expired." });
 		}
 
-		// Token is valid, send success response
-		return res.status(200).json({ message: "Token is valid." });
+		return res.status(200).json({
+			valid: true,
+			userId: decoded.userId,
+			role: decoded.role,
+			charityId: decoded.charityId,
+		});
 	} catch (error) {
 		console.error("Token validation error:", error.message);
 		return res.status(401).json({ message: "Invalid or expired token." });
+	}
+};
+
+export const refreshAccessToken = async (req, res) => {
+	try {
+		const { refreshToken } = req.body;
+
+		if (!refreshToken) {
+			return res.status(400).json({ message: "Refresh token is required." });
+		}
+
+		const decoded = jwt.verify(refreshToken, JWT_SECRET);
+
+		if (decoded.type !== "refresh") {
+			return res.status(401).json({ message: "Invalid refresh token." });
+		}
+
+		const tokenExtra = {
+			...(decoded.charityId ? { charityId: decoded.charityId } : {}),
+			...(decoded.permissions ? { permissions: decoded.permissions } : {}),
+		};
+		const token = generateAccessToken(
+			decoded.userId,
+			decoded.role,
+			tokenExtra,
+		);
+
+		// Keep the same refresh token until it expires to avoid session races
+		// that can invalidate the client copy and force an automatic logout.
+		return res.status(200).json({
+			token,
+			refreshToken,
+			userId: decoded.userId,
+			role: decoded.role,
+		});
+	} catch (error) {
+		console.error("Refresh token error:", error.message);
+		return res.status(401).json({ message: "Invalid or expired refresh token." });
+	}
+};
+
+export const oauthLogin = async (req, res) => {
+	try {
+		const { email, name, image, provider, providerId, intendedRole = "USER" } =
+			req.body;
+
+		if (!email || !provider) {
+			return res.status(400).json({ message: "Email and provider are required." });
+		}
+
+		let user;
+		let charityId;
+
+		if (intendedRole === "CHARITY") {
+			user = await Charity.findOne({ email });
+			if (!user) {
+				const staff = await CharityStaff.findOne({
+					email,
+					active: { $ne: false },
+				});
+				if (staff) {
+					user = staff;
+					charityId = staff.parentCharityId?.toString();
+				}
+			}
+			if (!user) {
+				return res.status(404).json({
+					message:
+						"No charity or staff account found for this email. Register your charity first.",
+				});
+			}
+		} else if (intendedRole === "ADMIN") {
+			user = await Admin.findOne({ email });
+			if (!user || !isAdminRole(user.role)) {
+				return res.status(404).json({
+					message: "No admin account found for this email.",
+				});
+			}
+		} else {
+			user = await User.findOne({ email });
+
+			if (!user) {
+				const nameParts = (name || "Angelpage User").trim().split(" ");
+				const firstName = nameParts[0] || "User";
+				const lastName = nameParts.slice(1).join(" ") || "Member";
+				const randomPassword = `${provider}-${providerId || "oauth"}-${Date.now()}`;
+
+				user = new User({
+					email,
+					firstName,
+					lastName,
+					userName: `${email.split("@")[0]}_${Date.now()}`,
+					password: randomPassword,
+					role: "USER",
+					verified: true,
+					profileImage: image || "",
+					profileCompleted: false,
+				});
+				await user.save();
+			}
+		}
+
+		if (user.role === "USER") {
+			try {
+				await linkGuestOrdersToAccount(user._id, email, user.role);
+			} catch (linkErr) {
+				console.error("Guest order link on OAuth failed:", linkErr);
+			}
+		}
+
+		const tokenExtra = buildAuthExtras(user, charityId);
+		const token = generateAccessToken(
+			user._id.toString(),
+			user.role,
+			tokenExtra,
+		);
+		const refreshToken = generateRefreshToken(
+			user._id.toString(),
+			user.role,
+			tokenExtra,
+		);
+
+		return res.status(200).json({
+			message: "OAuth login successful",
+			user: {
+				...user.toObject(),
+				charityId,
+				staffRole: user.staffRole,
+				permissions: tokenExtra.permissions || [],
+			},
+			token,
+			refreshToken,
+		});
+	} catch (error) {
+		console.error("OAuth login error:", error);
+		return res.status(500).json({ message: "OAuth login failed." });
+	}
+};
+
+export const claimGuestOrders = async (req, res) => {
+	try {
+		const userId = req.user?.userId;
+		const role = req.user?.role;
+
+		if (!userId) {
+			return res.status(400).json({ message: "User context required." });
+		}
+
+		const user = await User.findById(userId).select("email role");
+		if (!user?.email) {
+			return res.status(404).json({ message: "User not found." });
+		}
+
+		const result = await linkGuestOrdersToAccount(
+			userId,
+			user.email,
+			user.role || role,
+		);
+
+		return res.status(200).json({
+			message:
+				result.linked > 0
+					? `Linked ${result.linked} guest order(s) to your account.`
+					: "No guest orders found for this email.",
+			...result,
+		});
+	} catch (error) {
+		console.error("claimGuestOrders:", error);
+		return res.status(500).json({ message: "Failed to link guest orders." });
 	}
 };

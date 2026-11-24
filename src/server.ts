@@ -69,62 +69,73 @@
 // 	console.log(`✅ Server is running on http://localhost:${PORT}`);
 // });
 
-// server.js
+// server.js — dotenv must load before any module that reads process.env at import time
+import 'dotenv/config';
 import express from 'express';
 import http from 'http';
-import { Server } from 'socket.io';
-import dotenv from 'dotenv';
 import cors from 'cors';
 import bodyParser from 'body-parser';
-import connectDB from './config/database'; // Your MongoDB connection logic
-import routes from './routes'; // Your API routes
-import errorHandler from './middlewares/error.middleware'; // Error handling middleware
+import connectDB from './config/database';
+import routes from './routes';
+import errorHandler from './middlewares/error.middleware';
 import productsRoutes from './api/products/products.routes.js';
+import { initSocket, getIO } from './config/socket';
+import { startEscrowAutoReleaseJob } from './services/escrowAutoRelease.service.js';
+import { startWorkers } from './workers/index.js';
+import {
+	apiRateLimiter,
+	authRateLimiter,
+	writeRateLimiter,
+} from './middlewares/rateLimit.middleware.js';
 
-dotenv.config();
+import './config/jwtSecret.js';
+import { validateEmailConfig } from './utils/emailConfig.js';
+import { handleStripeWebhook } from './api/webhooks/stripe.webhook.js';
+import { handleShopifyWebhook } from './api/webhooks/webhooks.controller.js';
+validateEmailConfig();
 
 const app = express();
 const server = http.createServer(app);
 
 // ✅ CORS Configuration (Fixes Mac/iOS Issues)
-app.use(
-  cors({
-    origin: process.env.FRONTEND_BASE_URL || 'http://localhost:3000', // Allow frontend domain
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true, // Allow cookies if necessary
-  })
+const corsOptions = {
+  origin: process.env.FRONTEND_BASE_URL || 'http://localhost:3000',
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Guest-Order-Token'],
+  credentials: true,
+};
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // Handle preflight requests
+
+// Stripe + Shopify webhooks require the raw request body for signature verification
+app.post(
+  '/api/webhooks/stripe',
+  express.raw({ type: 'application/json' }),
+  handleStripeWebhook,
 );
-app.options('*', cors()); // Handle preflight requests
+app.post(
+  '/api/webhooks/shopify',
+  express.raw({ type: 'application/json' }),
+  handleShopifyWebhook,
+);
 
 // ✅ Middleware
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
+app.use('/api/auth', authRateLimiter);
+app.use('/api', apiRateLimiter);
+app.use(
+	['/api/order', '/api/cart', '/api/products/create', '/api/email'],
+	writeRateLimiter
+);
+
 // ✅ Connect to MongoDB
 connectDB();
 
-// ✅ Setup Socket.IO with CORS
-const io = new Server(server, {
-  cors: {
-    origin: process.env.FRONTEND_BASE_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    credentials: true,
-  },
-});
-
-// ✅ Socket.IO Events
-io.on('connection', socket => {
-  console.log('A user connected');
-
-  socket.on('new-notification', data => {
-    console.log('New notification received:', data);
-  });
-
-  socket.on('disconnect', () => {
-    console.log('User disconnected');
-  });
-});
+// ✅ Setup Socket.IO (messaging, notifications, real-time events)
+initSocket(server);
+export { getIO };
 
 // ✅ Health Check Route
 app.get('/', (req, res) => {
@@ -186,4 +197,6 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`✅ Server running on http://localhost:${PORT}`);
+  startEscrowAutoReleaseJob();
+  startWorkers().catch((err) => console.error('[workers] failed to start:', err));
 });

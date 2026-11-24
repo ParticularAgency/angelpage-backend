@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const auth_middleware_1 = require("../../middlewares/auth.middleware");
+const socialPosts_controller_js_1 = require("./socialPosts.controller.js");
+const router = (0, express_1.Router)();
+router.get("/logs", (0, auth_middleware_1.authMiddleware)(), socialPosts_controller_js_1.getSocialPostLogs);
+router.post("/trigger", (0, auth_middleware_1.authMiddleware)(), socialPosts_controller_js_1.triggerSocialPost);
+router.post("/schedule", (0, auth_middleware_1.authMiddleware)(), socialPosts_controller_js_1.scheduleSocialPost);
+router.get("/scheduled", (0, auth_middleware_1.authMiddleware)(), socialPosts_controller_js_1.listScheduledPosts);
+router.delete("/scheduled/:id", (0, auth_middleware_1.authMiddleware)(), socialPosts_controller_js_1.cancelScheduledPost);
+exports.default = router;

@@ -8,6 +8,10 @@ import Charity from '../../models/Charity.model';
 import Product from "../../models/Product.model";
 import bcrypt from "bcryptjs";
 import Stripe from 'stripe';
+import {
+	rejectsCardSecrets,
+	sanitizePaymentMethodInput,
+} from "../../utils/sanitizePayment.js";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });
 const MINIMUM_THRESHOLD = 0.5;
 
@@ -111,7 +115,11 @@ export const getAdminData = async (
 			return;
 		}
 
-		res.status(200).json({ user });
+		const profile = user.toObject();
+		profile.addresses = Array.isArray(profile.addresses) ? profile.addresses : [];
+		profile.payments = Array.isArray(profile.payments) ? profile.payments : [];
+
+		res.status(200).json({ user: profile });
 	} catch (error) {
 		console.error("Error fetching user profile:", error);
 		res.status(500).json({
@@ -237,8 +245,17 @@ export const addPayment = async (
 ) => {
 	try {
 		const userId = req.user?.userId;
-		const newPayment = req.body;
-        
+		if (rejectsCardSecrets(req.body)) {
+			return res.status(400).json({
+				message:
+					"Card numbers and CVV must not be sent. Use Stripe Elements for card payments.",
+			});
+		}
+		const newPayment = sanitizePaymentMethodInput(req.body);
+		if (!newPayment.nameAccountHolder) {
+			return res.status(400).json({ message: "nameAccountHolder is required" });
+		}
+
 		const user = await Admin.findById(userId);
 		if (!user) {
 			res.status(404).json({ message: "User not found" });
@@ -269,7 +286,13 @@ export const updatePayment = async (
 	try {
 		const userId = req.user?.userId;
 		const { paymentId } = req.params;
-		const updatedPayment = req.body;
+		if (rejectsCardSecrets(req.body)) {
+			return res.status(400).json({
+				message:
+					"Card numbers and CVV must not be sent. Use Stripe Elements for card payments.",
+			});
+		}
+		const updatedPayment = sanitizePaymentMethodInput(req.body);
 
 		const user = await Admin.findById(userId);
 		if (!user) {
@@ -415,6 +438,8 @@ export const getTotalPlatformUsersWithDuration = async (req, res) => {
 			duration: calculateDuration(user.createdAt),
 			role: 'USER',
 			userId: user.userId,
+			canBlog: user.canBlog || false,
+			verified: user.verified || false,
 		}));
 
 		const formattedCharities = charities.map(charity => ({
@@ -425,6 +450,8 @@ export const getTotalPlatformUsersWithDuration = async (req, res) => {
 			duration: calculateDuration(charity.createdAt),
 			role: 'CHARITY',
 			charityId: charity.charityID,
+			canBlog: charity.canBlog || false,
+			verified: charity.verified || false,
 		}));
 
 		// Combine users and charities into a single array
@@ -461,6 +488,61 @@ const calculateDuration = (createdAt) => {
 	if (days < 7) return `${days} days ago`;
 	if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
 	return `${Math.floor(days / 30)} months ago`;
+};
+
+export const setUserVerified = async (req, res) => {
+	try {
+		const { userId } = req.params;
+		const { role, verified } = req.body;
+		if (typeof verified !== "boolean") {
+			return res.status(400).json({ message: "verified boolean required." });
+		}
+		let profile;
+		if (role === "CHARITY") {
+			profile = await Charity.findByIdAndUpdate(
+				userId,
+				{ verified },
+				{ new: true },
+			).select("charityName email verified");
+		} else {
+			profile = await User.findByIdAndUpdate(
+				userId,
+				{ verified },
+				{ new: true },
+			).select("firstName lastName email verified");
+		}
+		if (!profile) return res.status(404).json({ message: "User not found." });
+		res.status(200).json({ message: "Verification updated.", profile });
+	} catch (error) {
+		res.status(500).json({ message: "Failed to update verification." });
+	}
+};
+
+export const bulkSetUsersVerified = async (req, res) => {
+	try {
+		const { userIds = [], verified = true } = req.body;
+		if (!Array.isArray(userIds) || !userIds.length) {
+			return res.status(400).json({ message: "userIds array required." });
+		}
+		const [userResult, charityResult] = await Promise.all([
+			User.updateMany({ _id: { $in: userIds } }, { verified }),
+			Charity.updateMany({ _id: { $in: userIds } }, { verified }),
+		]);
+		const { logAudit } = await import("../../utils/auditLog.js");
+		await logAudit({
+			actorId: req.user.userId,
+			actorRole: req.user.role,
+			action: "BULK_VERIFY_USERS",
+			entityType: "user",
+			details: { count: userIds.length, verified },
+		});
+		res.status(200).json({
+			message: "Bulk verification updated.",
+			modified: (userResult.modifiedCount || 0) + (charityResult.modifiedCount || 0),
+		});
+	} catch (error) {
+		res.status(500).json({ message: "Bulk verify failed." });
+	}
 };
 
 // Delete user or charity by ID
@@ -696,7 +778,7 @@ export const getPlatformUserSessionsAnalytics = async (_req, res) => {
 				createdAt: { $gte: previousWeekStart, $lte: previousWeekEnd },
 			})),
 			...(await LoginActivity.distinct('userId', {
-				timestamp: { $gte: currentWeekStart, $lte: currentWeekEnd },
+				timestamp: { $gte: previousWeekStart, $lte: previousWeekEnd },
 				role: { $in: ['USER', 'CHARITY'] },
 			})),
 		]);

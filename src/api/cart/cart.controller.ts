@@ -1,11 +1,41 @@
 import { Request, Response } from "express";
 import Cart from "../../models/Cart.model";
+import Product from "../../models/Product.model";
+import { CustomRequest } from "../../middlewares/auth.middleware";
 
 // Add product to cart// Add or Update Product Quantity in Cart
 export const addProductOnCart = async (req: Request, res: Response) => {
 	const { userId, productId, quantity } = req.body;
+	const authUser = (req as CustomRequest).user;
+
+	if (!authUser?.userId || authUser.userId !== userId) {
+		return res.status(403).json({ error: "Cannot modify another user's cart." });
+	}
+
+	if (!productId) {
+		return res.status(400).json({ error: "productId is required." });
+	}
 
 	try {
+		const product = await Product.findById(productId).select(
+			"checkoutMode affiliateUrl ebayAffiliateUrl name",
+		);
+		if (!product) {
+			return res.status(404).json({ error: "Product not found." });
+		}
+
+		if (
+			product.checkoutMode === "ebay_redirect" ||
+			product.checkoutMode === "affiliate_redirect"
+		) {
+			return res.status(400).json({
+				error: "Affiliate products use external checkout.",
+				checkoutMode: product.checkoutMode,
+				affiliateUrl: product.affiliateUrl || product.ebayAffiliateUrl,
+				productName: product.name,
+			});
+		}
+
 		let cart = await Cart.findOne({ userId });
 
 		if (!cart) {
@@ -48,7 +78,7 @@ export const getProductOnCart = async (req: Request, res: Response) => {
 		const cart = await Cart.findOne({ userId }).populate({
 			path: "items.productId",
 			select:
-				"name price weight dimensions selectedCharityName selectedCharityId brand images seller charity charityProfit",
+				"name price weight dimensions selectedCharityName selectedCharityId brand images seller charity charityProfit sellerSharePercent sellerProfit fulfillmentType sellAreas checkoutMode affiliateUrl ebayAffiliateUrl slug",
 			populate: [
 				{
 					path: "seller",
@@ -131,8 +161,19 @@ export const updateQuantityInCart = async (req: Request, res: Response) => {
 		);
 
 		if (itemIndex > -1) {
-			// Update the quantity
-			cart.items[itemIndex].quantity += quantityChange;
+			const product = await Product.findById(productId).select(
+				"stockRemaining quantity",
+			);
+			const maxQty = product?.stockRemaining ?? product?.quantity ?? 99;
+			const nextQty = cart.items[itemIndex].quantity + quantityChange;
+
+			if (nextQty > maxQty) {
+				return res.status(400).json({
+					error: `Only ${maxQty} available in stock`,
+				});
+			}
+
+			cart.items[itemIndex].quantity = nextQty;
 
 			// Remove item if quantity goes below 1
 			if (cart.items[itemIndex].quantity < 1) {

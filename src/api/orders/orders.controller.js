@@ -1,14 +1,94 @@
 import axios from "axios";
 import { Buffer } from "buffer";
 import Order from "../../models/Order.model";
+import Product from "../../models/Product.model";
 import Cart from "../../models/Cart.model";
 // import { shipStationClient } from "../../utils/shipstation";
 // import { startOfWeek, subWeeks, startOfMonth, subMonths, startOfYear, subYears } from "date-fns";
 import { startOfWeek, subWeeks, startOfMonth, subMonths, subYears, startOfYear, endOfWeek, endOfMonth, endOfYear } from 'date-fns';
+import {
+	buildPeriodRanges,
+	buildOrderStatusSummary,
+	buildWeeklyChart,
+	buildMonthlyChart,
+	buildYearlyChart,
+	emptyPurchaseResponse,
+	calculatePercentageChange,
+} from '../../services/dashboard.service';
+import {
+	CHARITY_SHARE_RATE,
+	PLATFORM_FEE_RATE,
+} from "../../constants/platformPolicy.js";
+import { calculateProfitSplit } from "../../utils/profitSplit.js";
+import { assertUkShipping, currencyForCountry } from "../../utils/ukValidation.js";
+import { sanitizePaymentMethodInput } from "../../utils/sanitizePayment.js";
+
+const sanitizeShippingAddress = (address = {}) => ({
+	name: address.name,
+	address: address.address,
+	city: address.city,
+	state: address.state,
+	country: address.country,
+	postcode: address.postcode || address.postCode,
+	email: address.email,
+});
 
 import Stripe from 'stripe';
+import User from "../../models/User.model";
+import { sendOrderShippedEmail } from "../../utils/email";
+import {
+	fireMarketingEvent,
+	JOURNEY_EVENTS,
+} from "../../services/marketingJourneys.service.js";
+import {
+	applyFailedPayment,
+	applySuccessfulPayment,
+} from "../../services/orderPayment.service.js";
+import {
+	notifySellersOrderShipped,
+	notifyBuyerOrderDelivered,
+} from "../../utils/notifyUser.js";
+import {
+	generateGuestOrderToken,
+	hashGuestOrderToken,
+	verifyGuestOrderToken,
+	extractGuestToken,
+	assertGuestMayUpdateFields,
+} from "../../utils/guestOrderToken.js";
+import { isAdminRole } from "../../constants/adminRoles.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });
+
+async function verifyStripePaymentForOrder(order, paymentIntentId) {
+	if (!paymentIntentId) {
+		throw new Error("paymentIntentId is required to confirm payment.");
+	}
+
+	const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+
+	if (paymentIntent.status !== "succeeded") {
+		throw new Error("Payment has not succeeded.");
+	}
+
+	const metadataOrderId = paymentIntent.metadata?.orderId;
+	if (metadataOrderId && metadataOrderId !== order._id.toString()) {
+		throw new Error("Payment intent does not match this order.");
+	}
+
+	const expectedAmount = Math.round(order.grandTotal * 100);
+	if (paymentIntent.amount !== expectedAmount) {
+		throw new Error("Payment amount does not match order total.");
+	}
+
+	if (
+		order.stripePaymentIntentId &&
+		order.stripePaymentIntentId !== paymentIntent.id
+	) {
+		throw new Error("Order is linked to a different payment intent.");
+	}
+
+	return paymentIntent;
+}
 
 
 export const createOrder = async (req, res) => {
@@ -18,6 +98,8 @@ export const createOrder = async (req, res) => {
 
 	const {
 		buyerId,
+		guestEmail,
+		guestName,
 		products,
 		shippingAddress,
 		paymentMethod,
@@ -31,31 +113,94 @@ export const createOrder = async (req, res) => {
 		adminAccountId = process.env.STRIPE_ADMIN_ACCOUNT_ID,
 	} = req.body;
 
+	const isGuestOrder = !buyerId;
+	const resolvedShipmentCost = Number(shipmentCost) || 0;
+
 	try {
-		if (!buyerId || !products || products.length === 0 || !shippingAddress || !adminAccountId || !paymentMethod || !carrierCode || !serviceCode  ||
-			shipmentCost === undefined) {
+		if (
+			!products ||
+			products.length === 0 ||
+			!shippingAddress ||
+			!adminAccountId ||
+			!paymentMethod
+		) {
 			return res.status(400).json({ error: "Invalid order details" });
 		}
 
-		const enrichedProducts = products.map((product) => {
+		if (isGuestOrder) {
+			if (!guestEmail?.trim() || !guestName?.trim()) {
+				return res.status(400).json({ error: "Guest email and name are required." });
+			}
+		} else if (!buyerId) {
+			return res.status(400).json({ error: "Invalid order details" });
+		}
+
+		if (!assertUkShipping(shippingAddress, res)) {
+			return;
+		}
+
+		const enrichedProducts = [];
+		for (const product of products) {
+			if (!product.productId) {
+				return res.status(400).json({ error: "Invalid product in order." });
+			}
+
+			const listing = await Product.findById(product.productId).select(
+				"seller charity weight dimensions sellerSharePercent fulfillmentType sellAreas",
+			);
+			if (!listing) {
+				return res.status(400).json({
+					error: `Product not found: ${product.productId}`,
+				});
+			}
+
+			if (!isGuestOrder) {
+				const sellerId = listing.seller?.toString();
+				const charitySellerId = listing.charity?.toString();
+				if (sellerId === buyerId || charitySellerId === buyerId) {
+					return res
+						.status(400)
+						.json({ error: "You cannot purchase your own listing." });
+				}
+			}
+
+			const charityId = product.charity || listing.charity;
+			if (!charityId) {
+				return res.status(400).json({
+					error: "Product is missing charity association.",
+				});
+			}
+
+			const productWeight = product.weight ?? listing.weight;
+			const productDimensions = product.dimensions ?? listing.dimensions;
 			const totalCost = product.price * product.quantity;
-			const charityProfit = totalCost * 0.9;
-			const adminFee = totalCost * 0.1;
-			const totalWeight = parseFloat(product.weight || 0) * product.quantity;
-			return {
+			const split = calculateProfitSplit(
+				totalCost,
+				listing.sellerSharePercent ?? 0,
+			);
+			const charityProfit = split.charityProfit;
+			const adminFee = split.platformFee;
+			const sellerProfit = split.sellerProfit;
+			const totalWeight = parseFloat(productWeight || 0) * product.quantity;
+
+			enrichedProducts.push({
 				...product,
-				seller: product.seller || null,
+				seller: product.seller || listing.seller || null,
+				charity: charityId,
+				weight: productWeight,
 				totalProductCost: totalCost,
 				charityProfit,
+				sellerProfit,
 				adminFee,
 				totalWeight,
 				dimensions: {
-					length: parseFloat(product.dimensions?.depth || 0),
-					width: parseFloat(product.dimensions?.width || 0),
-					height: parseFloat(product.dimensions?.height || 0) * product.quantity,
+					length: parseFloat(productDimensions?.depth || 0),
+					width: parseFloat(productDimensions?.width || 0),
+					height:
+						parseFloat(productDimensions?.height || 0) * product.quantity,
 				},
-			};
-		});
+			});
+		}
 		// Calculate the total weight for all products
 		const totalWeight = enrichedProducts.reduce((sum, product) => sum + product.totalWeight, 0);
 		const combinedDimensions = enrichedProducts.reduce(
@@ -68,15 +213,37 @@ export const createOrder = async (req, res) => {
 			{ length: 0, width: 0, height: 0 }
 		);
 		const totalAmount = enrichedProducts.reduce((sum, product) => sum + product.totalProductCost, 0);
-		const grandTotal = totalAmount + shipmentCost;
+		const grandTotal = totalAmount + resolvedShipmentCost;
 		// Generate numeric ShipStation order ID
 		const numericShipStationOrderId = generateNumericId();
 
+		const normalizedPaymentMethod = (() => {
+			const sanitized = sanitizePaymentMethodInput(paymentMethod || {});
+			const holder =
+				sanitized.nameAccountHolder ||
+				(isGuestOrder ? guestName.trim() : "Cardholder");
+			return {
+				nameAccountHolder: holder,
+				stripePaymentMethodId: sanitized.stripePaymentMethodId || "",
+				useShippingAsBilling: sanitized.useShippingAsBilling ?? true,
+				billingAddress: sanitized.billingAddress || {
+					name: isGuestOrder ? guestName.trim() : holder,
+					address: shippingAddress.address,
+					city: shippingAddress.city,
+					country: shippingAddress.country,
+					postCode: shippingAddress.postcode || shippingAddress.postCode,
+				},
+			};
+		})();
+
 		const newOrder = new Order({
-			buyerId,
+			buyerId: isGuestOrder ? undefined : buyerId,
+			guestEmail: isGuestOrder ? guestEmail.trim() : undefined,
+			guestName: isGuestOrder ? guestName.trim() : undefined,
+			isGuestOrder,
 			products: enrichedProducts,
 			totalAmount,
-			shipmentCost,
+			shipmentCost: resolvedShipmentCost,
 			grandTotal,
 			combinedDimensions,
 			totalWeight,
@@ -87,10 +254,10 @@ export const createOrder = async (req, res) => {
 				height: combinedDimensions.height,
 			},
 			packageCode,
-			shippingAddress,
-			paymentMethod,
-			carrierCode,
-			serviceCode,
+			shippingAddress: sanitizeShippingAddress(shippingAddress),
+			paymentMethod: normalizedPaymentMethod,
+			carrierCode: carrierCode || null,
+			serviceCode: serviceCode || null,
 			paymentStatus: "Pending",
 			paymentConfirmed: false,
 			paymentConfirmedAt,
@@ -100,19 +267,54 @@ export const createOrder = async (req, res) => {
 
 		await newOrder.save();
 
+		let guestAccessToken;
+		if (isGuestOrder) {
+			guestAccessToken = generateGuestOrderToken();
+			newOrder.guestAccessTokenHash = hashGuestOrderToken(guestAccessToken);
+			await newOrder.save();
+		}
+
 		// Create a PaymentIntent
 		const paymentIntent = await stripe.paymentIntents.create({
 			amount: Math.round(grandTotal * 100), // Stripe expects amount in cents
-			currency: "gbp",
+			currency: currencyForCountry(shippingAddress?.country),
 			payment_method_types: ["card"],
 			metadata: { orderId: newOrder._id.toString(), },
 
 		});
 
+		newOrder.stripePaymentIntentId = paymentIntent.id;
+		await newOrder.save();
 
-		await Cart.findOneAndUpdate({ userId: buyerId }, { items: [] });
 
-		// ShipStation integration
+		if (!isGuestOrder && buyerId) {
+			await Cart.findOneAndUpdate({ userId: buyerId }, { items: [] });
+		}
+
+		const baseResponse = {
+			success: true,
+			message: "Order created successfully",
+			order: newOrder,
+			clientSecret: paymentIntent.client_secret,
+			...(guestAccessToken ? { guestAccessToken } : {}),
+		};
+
+		const canSyncShipStation =
+			carrierCode &&
+			serviceCode &&
+			process.env.SHIPSTATION_API_KEY &&
+			process.env.SHIPSTATION_API_SECRET;
+
+		if (!canSyncShipStation) {
+			return res.status(201).json({
+				...baseResponse,
+				message: carrierCode
+					? baseResponse.message
+					: "Order created — shipping carrier can be selected later.",
+			});
+		}
+
+		// ShipStation integration (when carrier selected)
 		const authToken = Buffer.from(
 			`${process.env.SHIPSTATION_API_KEY}:${process.env.SHIPSTATION_API_SECRET}`
 		).toString("base64");
@@ -122,7 +324,7 @@ export const createOrder = async (req, res) => {
 			orderKey: newOrder._id.toString(),
 			orderDate: new Date(newOrder.createdAt).toISOString(),
 			orderStatus: "awaiting_shipment",
-			customerEmail: shippingAddress.email || "customer@example.com",
+			customerEmail: shippingAddress.email || guestEmail || "customer@example.com",
 			billTo: {
 				name: shippingAddress.name,
 				street1: shippingAddress.address,
@@ -130,7 +332,7 @@ export const createOrder = async (req, res) => {
 				state: shippingAddress.state || "N/A",
 				postalCode: shippingAddress.postcode,
 				country: shippingAddress.country,
-				email: shippingAddress.email || "customer@example.com",
+				email: shippingAddress.email || guestEmail || "customer@example.com",
 			},
 			shipTo: {
 				name: shippingAddress.name,
@@ -144,13 +346,12 @@ export const createOrder = async (req, res) => {
 				name: product.name,
 				quantity: product.quantity,
 				unitPrice: product.price,
-				total: product.totalProductCost, // Ensure the total cost of this product
+				total: product.totalProductCost,
 			})),
-			amountPaid: totalAmount + shipmentCost, // Ensure this includes shipping
-			shippingAmount: shipmentCost,
+			amountPaid: totalAmount + resolvedShipmentCost,
+			shippingAmount: resolvedShipmentCost,
 			taxAmount: 0,
 			packageCode: "package",
-			
 			weight: { value: totalWeight, units: 'ounces' },
 			dimensions: {
 				units: 'inches',
@@ -158,10 +359,9 @@ export const createOrder = async (req, res) => {
 				width: combinedDimensions.width,
 				height: combinedDimensions.height,
 			},
-			carrierCode: carrierCode,
-			serviceCode: serviceCode,
+			carrierCode,
+			serviceCode,
 		};
-
 
 		try {
 			const orderResponse = await axios.post(
@@ -182,11 +382,8 @@ export const createOrder = async (req, res) => {
 			await newOrder.save();
 
 			res.status(201).json({
-				success: true,
+				...baseResponse,
 				message: "Order created successfully and synced with ShipStation",
-				order: newOrder,
-				clientSecret: paymentIntent.client_secret,
-
 			});
 		} catch (orderError) {
 			console.error("Error creating order in ShipStation:", orderError.response?.data || orderError.message);
@@ -195,15 +392,64 @@ export const createOrder = async (req, res) => {
 			await newOrder.save();
 
 			res.status(201).json({
-				success: true,
+				...baseResponse,
 				message: "Order created locally, but failed to sync with ShipStation",
-				order: newOrder,
-				clientSecret: paymentIntent.client_secret,
 			});
 		}
 	} catch (error) {
 		console.error("Error creating order:", error);
 		res.status(500).json({ error: error.message || "Failed to create order" });
+	}
+};
+
+export const createGuestOrder = async (req, res) => {
+	req.body.buyerId = undefined;
+	return createOrder(req, res);
+};
+
+export const getGuestOrderConfirmation = async (req, res) => {
+	try {
+		const { orderId } = req.params;
+		const { email, guestToken } = req.query;
+
+		if (!email?.trim()) {
+			return res.status(400).json({ error: "Email is required to view this order." });
+		}
+		if (!guestToken) {
+			return res.status(403).json({
+				error: "Guest order token is required. Use the link from checkout.",
+			});
+		}
+
+		const order = await Order.findById(orderId)
+			.select("+guestAccessTokenHash")
+			.populate("products.productId", "name price images brand")
+			.populate("products.seller", "firstName lastName profileImage")
+			.populate("products.charity", "charityName profileImage");
+
+		if (!order) {
+			return res.status(404).json({ error: "Order not found" });
+		}
+		if (!order.isGuestOrder) {
+			return res.status(403).json({ error: "Sign in to view this order." });
+		}
+		if (!verifyGuestOrderToken(guestToken, order.guestAccessTokenHash)) {
+			return res.status(403).json({ error: "Invalid guest order token." });
+		}
+		if (
+			order.guestEmail?.trim().toLowerCase() !==
+			String(email).trim().toLowerCase()
+		) {
+			return res.status(403).json({ error: "Email does not match this order." });
+		}
+
+		const safeOrder = order.toObject();
+		delete safeOrder.guestAccessTokenHash;
+
+		res.status(200).json({ success: true, order: safeOrder });
+	} catch (error) {
+		console.error("getGuestOrderConfirmation:", error);
+		res.status(500).json({ error: "Failed to fetch order." });
 	}
 };
 
@@ -327,12 +573,25 @@ export const getRates = async (req, res) => {
 
 export const createLabelForOrder = async (req, res) => {
 	const { orderId } = req.params;
+	const requesterId = req.user?.userId;
+	const requesterRole = req.user?.role;
 
 	try {
 		const order = await Order.findById(orderId);
 
 		if (!order) {
 			return res.status(404).json({ error: "Order not found" });
+		}
+
+		const isSeller = order.products?.some(
+			p =>
+				p.seller?.toString?.() === requesterId ||
+				p.charity?.toString?.() === requesterId,
+		);
+		if (!requesterId || (!isSeller && !isAdminRole(requesterRole))) {
+			return res.status(403).json({
+				error: "Only the seller or an admin can create shipping labels.",
+			});
 		}
 
 		// Check if a label has already been created for this order
@@ -491,27 +750,94 @@ export const createLabelForOrder = async (req, res) => {
 
 // Endpoint to update order status and payment status
 export const updateOrderStatus = async (req, res) => {
-	const { orderId, status, orderStatus, paymentStatus, paymentConfirmed, paymentConfirmedAt } = req.body;
+	const {
+		orderId,
+		status,
+		orderStatus,
+		paymentStatus,
+		paymentConfirmed,
+		paymentConfirmedAt,
+		paymentIntentId,
+	} = req.body;
+	const requesterId = req.user?.userId;
+	const requesterRole = req.user?.role;
 
 	try {
-		const order = await Order.findById(orderId);
+		const order = await Order.findById(orderId).select("+guestAccessTokenHash");
 
 		if (!order) {
 			return res.status(404).json({ error: 'Order not found' });
 		}
 
-		// Update order status and payment status
-		order.status = status || order.status;
-		order.orderStatus = orderStatus || order.orderStatus;
-		order.paymentStatus = paymentStatus || order.paymentStatus;
-		order.paymentConfirmed = paymentConfirmed || order.paymentConfirmed;
+		const isGuestCheckout = order.isGuestOrder || (!order.buyerId && order.guestEmail);
 
-		// If payment is successful, store the payment confirmation time
-		if (paymentConfirmedAt) {
-			order.paymentConfirmedAt = paymentConfirmedAt; // Use the value from the request
+		if (isGuestCheckout) {
+			const guestToken = extractGuestToken(req);
+			if (!verifyGuestOrderToken(guestToken, order.guestAccessTokenHash)) {
+				return res.status(403).json({
+					error: 'Valid guest order token required for this checkout.',
+				});
+			}
+			const fieldError = assertGuestMayUpdateFields(req.body);
+			if (fieldError) {
+				return res.status(403).json({ error: fieldError });
+			}
+		} else if (order.buyerId) {
+			const isBuyer = order.buyerId?.toString() === requesterId;
+			const isSeller = order.products?.some(
+				p => p.seller?.toString?.() === requesterId || p.charity?.toString?.() === requesterId,
+			);
+			if (!requesterId || (!isBuyer && !isSeller && !isAdminRole(requesterRole))) {
+				return res.status(403).json({ error: 'Not authorized to update this order.' });
+			}
+		} else {
+			return res.status(403).json({ error: 'Not authorized to update this order.' });
 		}
 
-		await order.save();
+		const wantsPaymentSuccess =
+			paymentStatus === "Paid" || paymentConfirmed === true;
+		const paymentFailed = paymentStatus === "Failed";
+
+		if (wantsPaymentSuccess) {
+			const intentId =
+				paymentIntentId || order.stripePaymentIntentId;
+			try {
+				const paymentIntent = await verifyStripePaymentForOrder(
+					order,
+					intentId,
+				);
+				if (!order.stripePaymentIntentId) {
+					order.stripePaymentIntentId = paymentIntent.id;
+				}
+				if (status) order.status = status;
+				if (orderStatus) order.orderStatus = orderStatus;
+				await applySuccessfulPayment(order, {
+					confirmedAt: paymentConfirmedAt
+						? new Date(paymentConfirmedAt)
+						: new Date(paymentIntent.created * 1000),
+				});
+			} catch (verifyErr) {
+				return res.status(400).json({
+					error: verifyErr.message || "Payment verification failed.",
+				});
+			}
+		} else {
+			if (status) order.status = status;
+			if (orderStatus) order.orderStatus = orderStatus;
+			if (paymentStatus) order.paymentStatus = paymentStatus;
+			if (paymentConfirmed !== undefined) {
+				order.paymentConfirmed = paymentConfirmed;
+			}
+			if (paymentConfirmedAt) {
+				order.paymentConfirmedAt = paymentConfirmedAt;
+			}
+
+			if (paymentFailed) {
+				await applyFailedPayment(order);
+			} else {
+				await order.save();
+			}
+		}
 
 		res.status(200).json({ success: true, message: 'Order status updated successfully', order });
 	} catch (error) {
@@ -641,6 +967,11 @@ export const getPackages = async (req, res) => {
 // Get orders for a user
 export const getOrdersByUser = async (req, res) => {
 	const { userId } = req.params;
+	const requesterId = req.user?.userId;
+
+	if (!requesterId || requesterId !== userId) {
+		return res.status(403).json({ error: "Not authorized to view these orders." });
+	}
 
 	try {
 		const orders = await Order.find({ buyerId: userId })
@@ -701,8 +1032,8 @@ export const getSoldItems = async (req, res) => {
 					productId: product.productId?._id || null,
 					sellerId: product.seller?._id || null,
 					productName: product.productId?.name || "Unknown Product",
-					charityProfit: order.products[0]?.charityProfit || "Unknown Profit",
-					adminFee: order.products[0]?.adminFee || "Unknown admin fees",
+					charityProfit: product.charityProfit || 0,
+					adminFee: product.adminFee || 0,
 					productBrand: product.productId?.brand || "Unknown Product",
 					productPrice: product.productId?.price || 0,
 					productImages: product.productId?.images || [],
@@ -836,7 +1167,9 @@ export const getSoldItems = async (req, res) => {
 			totalSoldItems: soldItems.length,
 			totalSold: currentMonthStats.totalSold,
 			totalRevenue: currentMonthStats.totalRevenue,
+			period: "month",
 			changes: statsChanges,
+			statusSummary: buildOrderStatusSummary(orders, sellerId),
 			soldItems,
 			weeklyData,
 			monthlyData,
@@ -870,7 +1203,7 @@ export const getPurchaseItems = async (req, res) => {
 			.populate("products.charity", "charityName email profileImage _id storefrontId");
 
 		if (!orders || orders.length === 0) {
-			return res.status(404).json({ success: false, message: "No purchases found" });
+			return res.status(200).json(emptyPurchaseResponse());
 		}
 
 		// Transform data to include additional details
@@ -981,14 +1314,21 @@ export const getPurchaseItems = async (req, res) => {
 			},
 		};
 
+		const ranges = buildPeriodRanges();
+
 		// Prepare the response data
 		const responseData = {
 			success: true,
 			totalPurchaseItems: purchaseItems.length,
 			totalPurchase: currentMonthStats.totalPurchase,
 			totalSpend: currentMonthStats.totalSpend,
+			period: "month",
 			changes: statsChanges,
+			statusSummary: buildOrderStatusSummary(orders),
 			purchaseItems,
+			weeklyData: buildWeeklyChart(orders, ranges.currentWeekStart),
+			monthlyData: buildMonthlyChart(orders, ranges.currentMonthStart),
+			yearlyData: buildYearlyChart(orders, ranges.currentYearStart),
 		};
 
 		res.status(200).json(responseData);
@@ -1127,11 +1467,17 @@ export const getTotalSoldItems = async (req, res) => {
 
 // Get purchases for a buyer
 export const getBuyerPurchases = async (req, res) => {
-	const { userId } = req.params;
+	const { buyerId } = req.params;
+	const requesterId = req.user?.userId;
+	const requesterRole = req.user?.role;
+
+	if (!requesterId || (buyerId !== requesterId && !isAdminRole(requesterRole))) {
+		return res.status(403).json({ error: "Not authorized to view these purchases." });
+	}
 
 	try {
 		// Fetch orders placed by the buyer
-		const orders = await Order.find({ buyerId: userId })
+		const orders = await Order.find({ buyerId })
 			.populate("products.productId", "name price images")
 			.populate("products.seller", "firstName lastName email profileImage")
 			.populate("products.charity", "charityName profileImage id storefrontId");
@@ -1342,6 +1688,40 @@ export const updateOrderStatusToShipped = async (req, res) => {
 
 		await order.save();
 
+		try {
+			let buyerEmail;
+			let firstName = "there";
+			if (order.isGuestOrder) {
+				buyerEmail = order.guestEmail;
+				firstName = order.guestName?.split(" ")[0] || firstName;
+			} else {
+				const buyer = await User.findById(order.buyerId).select("email firstName");
+				buyerEmail = buyer?.email;
+				firstName = buyer?.firstName || firstName;
+			}
+			if (buyerEmail) {
+				await sendOrderShippedEmail({
+					email: buyerEmail,
+					firstName,
+					orderId: order._id.toString(),
+					trackingNumber,
+					carrierCode,
+				});
+				fireMarketingEvent(JOURNEY_EVENTS.ORDER_SHIPPED, {
+					email: buyerEmail,
+					orderId: order._id.toString(),
+					trackingNumber,
+					carrierCode,
+				});
+			}
+		} catch (notifyErr) {
+			console.error("Ship notification failed:", notifyErr);
+		}
+
+		notifySellersOrderShipped(order, trackingNumber).catch((err) =>
+			console.error("Shipped notification failed:", err),
+		);
+
 		res.status(200).json({
 			success: true,
 			message: "Order marked as shipped successfully",
@@ -1377,6 +1757,26 @@ export const updateOrderStatusToDelivered = async (req, res) => {
 
 		await order.save();
 
+		try {
+			let buyerEmail;
+			if (order.isGuestOrder) {
+				buyerEmail = order.guestEmail;
+			} else {
+				const buyer = await User.findById(order.buyerId).select("email");
+				buyerEmail = buyer?.email;
+			}
+			if (buyerEmail) {
+				fireMarketingEvent(JOURNEY_EVENTS.ORDER_DELIVERED, {
+					email: buyerEmail,
+					orderId: order._id.toString(),
+				});
+			}
+		} catch (journeyErr) {
+			console.error("Order delivered journey failed:", journeyErr);
+		}
+
+		notifyBuyerOrderDelivered(order).catch(console.error);
+
 		res.status(200).json({
 			success: true,
 			message: "Order status updated to Delivered",
@@ -1411,53 +1811,118 @@ export const getOrderById = async (req, res) => {
 };
 
 // Get total sold products and sales revenue (Admin View)
-export const getTotalSalesStats = async (_req, res) => {
+export const getTotalSalesStats = async (req, res) => {
 	try {
-		// Find all completed orders
-		const orders = await Order.find({ status: { $in: ["Delivered", "OrderConfirmed", "OrderPlaced"] } });
+		const period = (req.query.period || "month").toString().toLowerCase();
+		const orders = await Order.find({
+			paymentStatus: "Paid",
+		}).sort({ createdAt: -1 });
 
-		// Aggregate statistics
 		const stats = orders.reduce(
 			(acc, order) => {
 				order.products.forEach(product => {
-					// Increment total sold quantity and revenue
 					acc.totalProductsSold += product.quantity;
 					acc.totalRevenue += product.totalProductCost;
 
-					// Collect product details for a breakdown
 					acc.productDetails.push({
 						productId: product.productId?._id || null,
-						productName: product.productId?.name || "Unknown Product",
+						productName: product.productId?.name || product.name || "Unknown Product",
 						quantitySold: product.quantity,
 						totalRevenueGenerated: product.totalProductCost,
 						sellerId: product.seller?._id || null,
 						sellerName: product.seller
-							? `${product.seller.firstName} ${product.seller.lastName}`
+							? `${product.seller.firstName || ""} ${product.seller.lastName || ""}`.trim()
 							: "Unknown Seller",
 						charityId: product.charity?._id || null,
 						charityName: product.charity?.charityName || "Unknown Charity",
 						status: order.status,
+						paymentStatus: order.paymentStatus,
 						createdAt: order.createdAt,
 					});
 				});
 				return acc;
 			},
 			{
-				totalProductsSold: 0, // Total products sold
-				totalRevenue: 0, // Total revenue generated
-				productDetails: [], // Breakdown of product sales
+				totalProductsSold: 0,
+				totalRevenue: 0,
+				productDetails: [],
 			},
 		);
+
+		const ranges = buildPeriodRanges();
+		const monthlyData = buildMonthlyChart(orders, ranges.currentMonthStart);
+		const weeklyData = buildWeeklyChart(orders, ranges.currentWeekStart);
+		const yearlyData = buildYearlyChart(orders, ranges.currentYearStart);
+
+		const currentWeekRevenue = weeklyData.length
+			? weeklyData[weeklyData.length - 1]?.revenue || 0
+			: 0;
+		const previousWeekRevenue =
+			weeklyData.length > 1 ? weeklyData[weeklyData.length - 2]?.revenue || 0 : 0;
+		const salesChangePercent =
+			previousWeekRevenue > 0
+				? ((currentWeekRevenue - previousWeekRevenue) / previousWeekRevenue) * 100
+				: currentWeekRevenue > 0
+					? 100
+					: 0;
+
+		const periodKey =
+			period === "week" ? "week" : period === "year" ? "year" : "month";
+		const periodChart =
+			periodKey === "week"
+				? weeklyData
+				: periodKey === "year"
+					? yearlyData
+					: monthlyData;
+		const periodRevenue = periodChart.reduce((s, d) => s + (d.revenue || 0), 0);
 
 		res.status(200).json({
 			success: true,
 			totalProductsSold: stats.totalProductsSold,
+			soldItemsCount: stats.totalProductsSold,
 			totalRevenue: stats.totalRevenue,
+			periodRevenue,
+			period: periodKey,
+			salesChange: salesChangePercent,
 			productDetails: stats.productDetails,
+			statusSummary: buildOrderStatusSummary(orders),
+			weeklyData,
+			monthlyData,
+			yearlyData,
+			chartData: periodChart,
 		});
 	} catch (error) {
 		console.error("Error fetching sales stats:", error);
 		res.status(500).json({ error: "Failed to fetch sales statistics" });
+	}
+};
+
+export const getFailedPaymentOrders = async (_req, res) => {
+	try {
+		const orders = await Order.find({
+			$or: [{ paymentStatus: "Failed" }, { paymentConfirmed: false, status: "OrderPlaced" }],
+		})
+			.sort({ updatedAt: -1 })
+			.limit(100)
+			.populate("buyerId", "firstName lastName email");
+
+		res.status(200).json({
+			success: true,
+			count: orders.length,
+			orders: orders.map((o) => ({
+				_id: o._id,
+				status: o.status,
+				paymentStatus: o.paymentStatus,
+				grandTotal: o.grandTotal,
+				createdAt: o.createdAt,
+				buyer: o.isGuestOrder
+					? { email: o.guestEmail, name: o.guestName }
+					: o.buyerId,
+				isGuestOrder: o.isGuestOrder,
+			})),
+		});
+	} catch (error) {
+		res.status(500).json({ error: "Failed to fetch failed payments" });
 	}
 };
 
@@ -1646,3 +2111,45 @@ export const getCurrentUserPurchaseItems = async (req, res) => {
 	}
 };
 
+export const openOrderDispute = async (req, res) => {
+	const { orderId } = req.params;
+	const { notes } = req.body;
+	const userId = req.user?.userId;
+
+	try {
+		const order = await Order.findById(orderId);
+		if (!order) {
+			return res.status(404).json({ error: "Order not found" });
+		}
+
+		const isBuyer = order.buyerId?.toString() === userId;
+		const isSeller = order.products?.some(
+			p =>
+				p.seller?.toString?.() === userId ||
+				p.charity?.toString?.() === userId,
+		);
+
+		if (!isBuyer && !isSeller) {
+			return res.status(403).json({ error: "Not authorized to open a dispute on this order." });
+		}
+
+		if (order.disputeStatus === "OPEN") {
+			return res.status(400).json({ error: "A dispute is already open for this order." });
+		}
+
+		order.disputeStatus = "OPEN";
+		order.disputeOpenedAt = new Date();
+		order.disputeNotes = notes || "";
+		order.escrowStatus = "DISPUTED";
+		await order.save();
+
+		res.status(200).json({
+			success: true,
+			message: "Dispute opened. Buyer and seller should resolve directly; Angelpage mediation is in development.",
+			order,
+		});
+	} catch (error) {
+		console.error("Error opening dispute:", error);
+		res.status(500).json({ error: "Failed to open dispute" });
+	}
+};

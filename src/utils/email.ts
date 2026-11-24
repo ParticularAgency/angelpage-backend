@@ -21,7 +21,6 @@ export const sendEmail = async ({ to, subject, text, html }: EmailOptions) => {
 	};
 
 	try {
-		console.log("Sending email with payload:", msg);
 		const response = await sgMail.send(msg);
 		console.log(`Email sent successfully to ${to}:`, response[0].statusCode);
 	} catch (error: any) {
@@ -191,7 +190,6 @@ export const sendContactEmail = async ({ to, subject, text, html }: EmailOptions
 	};
 
 	try {
-		console.log("Sending email with payload:", msg);
 		const response = await sgMail.send(msg);
 		console.log(`Email sent successfully to ${to}:`, response[0].statusCode);
 	} catch (error: any) {
@@ -201,4 +199,81 @@ export const sendContactEmail = async ({ to, subject, text, html }: EmailOptions
 		);
 		throw new Error("Failed to send email");
 	}
+};
+
+export const sendOrderConfirmationEmail = async ({
+	email,
+	firstName,
+	orderId,
+	grandTotal,
+	charityTotal,
+	products,
+}: {
+	email: string;
+	firstName?: string;
+	orderId: string;
+	grandTotal: number;
+	charityTotal: number;
+	products: { name: string; charityProfit: number }[];
+}) => {
+	const productLines = products
+		.map(p => `<li>${p.name} — £${p.charityProfit.toFixed(2)} to charity</li>`)
+		.join("");
+
+	await sendEmail({
+		to: email,
+		subject: `Angelpage order confirmation #${orderId.slice(-6)}`,
+		text: `Thank you ${firstName || "customer"}. Order total £${grandTotal.toFixed(2)}. Charity donation £${charityTotal.toFixed(2)}.`,
+		html: `<p>Thank you ${firstName || "customer"},</p>
+      <p>Your order has been confirmed.</p>
+      <p><strong>Total:</strong> £${grandTotal.toFixed(2)}</p>
+      <p><strong>Charity donation:</strong> £${charityTotal.toFixed(2)}</p>
+      <ul>${productLines}</ul>
+      <p><a href="${process.env.FRONTEND_BASE_URL}/checkout/confirmation/${orderId}">View order</a></p>`,
+	});
+};
+
+export const sendOrderShippedEmail = async ({
+	email,
+	firstName,
+	orderId,
+	trackingNumber,
+	carrierCode,
+}: {
+	email: string;
+	firstName?: string;
+	orderId: string;
+	trackingNumber?: string;
+	carrierCode?: string;
+}) => {
+	await sendEmail({
+		to: email,
+		subject: `Your Angelpage order has shipped #${orderId.slice(-6)}`,
+		text: `Hi ${firstName || "customer"}, your order is on its way.${trackingNumber ? ` Tracking: ${trackingNumber}` : ""}`,
+		html: `<p>Hi ${firstName || "customer"},</p>
+      <p>Your order has shipped.</p>
+      ${trackingNumber ? `<p><strong>Tracking:</strong> ${trackingNumber} (${carrierCode || "carrier"})</p>` : ""}
+      <p><a href="${process.env.FRONTEND_BASE_URL}/checkout/confirmation/${orderId}">Track your order</a></p>`,
+	});
+};
+
+export const sendEscrowReleasedEmail = async ({
+	email,
+	firstName,
+	orderId,
+	grandTotal,
+}: {
+	email: string;
+	firstName?: string;
+	orderId: string;
+	grandTotal: number;
+}) => {
+	await sendEmail({
+		to: email,
+		subject: `Payment released for order #${orderId.slice(-6)}`,
+		text: `Hi ${firstName || "customer"}, funds of £${grandTotal.toFixed(2)} have been released to the seller after the escrow period.`,
+		html: `<p>Hi ${firstName || "customer"},</p>
+      <p>The escrow hold on your order has ended and payment of <strong>£${grandTotal.toFixed(2)}</strong> has been released to the seller.</p>
+      <p>Thank you for supporting charity through Angelpage.</p>`,
+	});
 };

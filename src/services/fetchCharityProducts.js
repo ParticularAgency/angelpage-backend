@@ -905,6 +905,9 @@ const CATEGORY_FILTER_MAP = {
     'Toys',
     'DVD',
     'Health',
+    'Watches',
+    'Books', 
+    'Furniture',
     ],
 
   /* -------------------- 📚 Books, Comics & Magazines -------------------- */

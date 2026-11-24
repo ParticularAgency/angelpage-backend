@@ -1,5 +1,24 @@
 import Notification from "../../models/Notification.model";
-import { io } from "../../server";
+import { getIO } from "../../config/socket";
+import { pushNotification } from "../../utils/notifyUser.js";
+
+export const notificationWebhook = async (req, res) => {
+	const secret = process.env.NOTIFICATION_WEBHOOK_SECRET;
+	const provided = req.get("x-angelpage-hook-secret");
+	if (!secret || provided !== secret) {
+		return res.status(401).json({ error: "Invalid hook secret." });
+	}
+
+	try {
+		const notification = await pushNotification(req.body || {});
+		if (!notification) {
+			return res.status(400).json({ error: "Missing required fields." });
+		}
+		res.status(201).json({ success: true, notification });
+	} catch (error) {
+		res.status(500).json({ error: "Failed to deliver notification." });
+	}
+};
 
 // Create a notification (already implemented, just updated argument names for clarity)
 export const createNotification = async (req, res) => {
@@ -22,8 +41,8 @@ export const createNotification = async (req, res) => {
 
 		await notification.save();
 
-		// Emit event to all connected clients
-		io.emit('new-notification', notification);
+		// Emit to recipient's personal room for targeted delivery
+		getIO().to(`user:${recipientId}`).emit('new-notification', notification);
 
 		res.status(201).json({ success: true, notification });
 	} catch (error) {
@@ -32,7 +51,42 @@ export const createNotification = async (req, res) => {
 	}
 };
 
-// Fetch notifications for the current user
+// Fetch all notifications (read + unread) for notification centre
+export const getAllUserNotifications = async (req, res) => {
+	const userId = req.user?.userId;
+	const role = req.user?.role;
+	const { limit = 50, page = 1 } = req.query;
+
+	if (!userId || !role) {
+		return res.status(400).json({ error: "User ID or role is missing." });
+	}
+
+	try {
+		const skip = (Number(page) - 1) * Number(limit);
+		const query = { recipientId: userId, recipientType: role };
+
+		const [notifications, total, unreadCount] = await Promise.all([
+			Notification.find(query)
+				.sort({ createdAt: -1 })
+				.skip(skip)
+				.limit(Number(limit)),
+			Notification.countDocuments(query),
+			Notification.countDocuments({ ...query, isRead: false }),
+		]);
+
+		res.status(200).json({
+			success: true,
+			notifications,
+			total,
+			unreadCount,
+			page: Number(page),
+		});
+	} catch (error) {
+		res.status(500).json({ error: "Failed to fetch notifications." });
+	}
+};
+
+// Fetch notifications for the current user (unread only — header dropdown)
 export const getCurrentUserNotifications = async (req, res) => {
 	const userId = req.user?.userId;
 	const role = req.user?.role;

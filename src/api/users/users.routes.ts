@@ -11,6 +11,7 @@ import {
 	deletePayment,
 } from "./users.controller";
 import multer from "multer";
+import { validatePaymentMethod } from "../../middlewares/validation.middleware";
 
 const router = Router();
 const upload = multer({ dest: "uploads/" });
@@ -29,8 +30,8 @@ router.post("/profile/addresses", authMiddleware(), addAddress); // Add address
 router.put("/profile/addresses/:addressId", authMiddleware(), updateAddress); // Update address
 router.delete("/profile/addresses/:addressId", authMiddleware(), deleteAddress); // Delete address
 
-router.post("/profile/payments", authMiddleware(), addPayment); // Add address
-router.put("/profile/payments/:paymentId", authMiddleware(), updatePayment); // Update address
-router.delete("/profile/payments/:paymentId", authMiddleware(), deletePayment); // Delete address
+router.post("/profile/payments", authMiddleware(), validatePaymentMethod, addPayment);
+router.put("/profile/payments/:paymentId", authMiddleware(), validatePaymentMethod, updatePayment);
+router.delete("/profile/payments/:paymentId", authMiddleware(), deletePayment);
 
 export default router;

@@ -1,0 +1,20 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const multer_1 = __importDefault(require("multer"));
+const auth_middleware_1 = require("../../middlewares/auth.middleware");
+const events_controller_1 = require("./events.controller");
+const router = (0, express_1.Router)();
+const upload = (0, multer_1.default)({ dest: "uploads/" });
+router.get("/", events_controller_1.getPublishedEvents);
+router.get("/mine", (0, auth_middleware_1.authMiddleware)(["ADMIN", "CHARITY", "CHARITY_STAFF"]), events_controller_1.getMyEvents);
+router.get("/admin/all", (0, auth_middleware_1.authMiddleware)(["ADMIN"]), events_controller_1.getAdminEvents);
+router.get("/slug/:slug", events_controller_1.getEventBySlug);
+router.post("/:eventId/poll/vote", events_controller_1.voteEventPoll);
+router.post("/", (0, auth_middleware_1.authMiddleware)(["ADMIN", "CHARITY", "CHARITY_STAFF"]), upload.single("coverImage"), events_controller_1.createEvent);
+router.patch("/:eventId/publish", (0, auth_middleware_1.authMiddleware)(["ADMIN"]), events_controller_1.publishEvent);
+router.patch("/:eventId", (0, auth_middleware_1.authMiddleware)(["ADMIN", "CHARITY", "CHARITY_STAFF"]), upload.single("coverImage"), events_controller_1.updateEvent);
+exports.default = router;

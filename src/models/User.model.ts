@@ -12,13 +12,11 @@ interface IAddress {
 	postcode: string;
 }
 
-// Interface for Payment Method
+// Interface for Payment Method (billing metadata only — no PAN/CVV; Stripe owns cards)
 interface IPaymentMethod {
 	_id: string;
 	nameAccountHolder: string;
-	accountNumber: string;
-	expiryDate: string;
-	cvvNumber: string;
+	stripePaymentMethodId?: string;
 	billingAddress: {
 		name: string;
 		address: string;
@@ -42,6 +40,8 @@ export interface IUser extends Document {
 	profileCompleted: boolean;
 	dateBirth: string;
 	verified: boolean;
+	canBlog?: boolean;
+	country?: string;
 	addresses: IAddress[];
 	payments: IPaymentMethod[];
 	listedProducts: mongoose.Types.ObjectId[];
@@ -63,12 +63,10 @@ const addressSchema = new Schema<IAddress>({
 	postcode: { type: String, required: true },
 });
 
-// Payment Method Schema
+// Payment Method Schema — never store card numbers or CVV
 const paymentMethodSchema = new Schema<IPaymentMethod>({
 	nameAccountHolder: { type: String, required: true },
-	accountNumber: { type: String, required: true },
-	expiryDate: { type: String, required: true },
-	cvvNumber: { type: String, required: true },
+	stripePaymentMethodId: { type: String, default: "" },
 	billingAddress: {
 		name: {
 			type: String,
@@ -123,6 +121,8 @@ const userSchema = new Schema<IUser>(
 		profileCompleted: { type: Boolean, default: false },
 		dateBirth: { type: String },
 		verified: { type: Boolean, default: false },
+		canBlog: { type: Boolean, default: false },
+		country: { type: String, default: "United Kingdom" },
 		addresses: [addressSchema],
 		payments: [paymentMethodSchema],
 		listedProducts: [{ type: Schema.Types.ObjectId, ref: "Product" }],

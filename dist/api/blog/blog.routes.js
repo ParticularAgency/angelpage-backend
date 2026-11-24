@@ -1,0 +1,21 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const multer_1 = __importDefault(require("multer"));
+const auth_middleware_1 = require("../../middlewares/auth.middleware");
+const blog_controller_1 = require("./blog.controller");
+const router = (0, express_1.Router)();
+const upload = (0, multer_1.default)({ dest: "uploads/" });
+router.get("/", blog_controller_1.getPublishedPosts);
+router.get("/slug/:slug", blog_controller_1.getPostBySlug);
+router.get("/mine", (0, auth_middleware_1.authMiddleware)(["USER", "CHARITY", "CHARITY_STAFF", "ADMIN"]), blog_controller_1.getMyPosts);
+router.get("/admin/all", (0, auth_middleware_1.authMiddleware)(["ADMIN"]), blog_controller_1.getAdminPosts);
+router.post("/", (0, auth_middleware_1.authMiddleware)(["USER", "CHARITY", "CHARITY_STAFF", "ADMIN"]), upload.single("coverImage"), blog_controller_1.createPost);
+router.put("/:postId", (0, auth_middleware_1.authMiddleware)(["USER", "CHARITY", "CHARITY_STAFF", "ADMIN"]), upload.single("coverImage"), blog_controller_1.updatePost);
+router.patch("/:postId/publish", (0, auth_middleware_1.authMiddleware)(["ADMIN"]), blog_controller_1.publishPost);
+router.patch("/admin/can-blog/:userId", (0, auth_middleware_1.authMiddleware)(["ADMIN"]), blog_controller_1.setCanBlog);
+router.delete("/:postId", (0, auth_middleware_1.authMiddleware)(["USER", "CHARITY", "CHARITY_STAFF", "ADMIN"]), blog_controller_1.deletePost);
+exports.default = router;

@@ -266,21 +266,30 @@ async function fetchWithRetry(url, options, retries = 3, delay = 3000) {
 /* ---------------------------------------------
    🎯 Fetch latest products per charity
 --------------------------------------------- */
-async function fetchLatestCharityProducts(charityId, sellerId, maxLimit = 500) {
-  console.log(`🔍 Fetching up to ${maxLimit} latest for ${sellerId}...`);
+/* ---------------------------------------------
+   🎯 Fetch latest products per charity (1000 total, 200 per batch)
+--------------------------------------------- */
+async function fetchLatestCharityProducts(charityId, sellerId, maxLimit = 1000) {
+  console.log(`🔍 Fetching up to ${maxLimit} latest products for ${sellerId}...`);
 
   const token = await getValidToken();
-  const pageSize = 200; // eBay API max
+  const pageSize = 200; // eBay API max page size
   const allItems = [];
 
   for (let offset = 0; offset < maxLimit; offset += pageSize) {
-    const url = `https://api.ebay.com/buy/browse/v1/item_summary/search?charity_ids=${charityId}&filter=sellers:{${sellerId}}&sort=newlyListed&limit=${pageSize}&offset=${offset}`;
+    const remaining = maxLimit - allItems.length;
+    const limit = remaining < pageSize ? remaining : pageSize;
+
+    const url = `https://api.ebay.com/buy/browse/v1/item_summary/search?charity_ids=${charityId}&filter=sellers:{${sellerId}}&sort=newlyListed&limit=${limit}&offset=${offset}`;
+
+    console.log(`📡 Requesting batch: offset=${offset}, limit=${limit}`);
 
     const res = await fetchWithRetry(url, {
       headers: {
         Authorization: `Bearer ${token}`,
         'X-EBAY-C-MARKETPLACE-ID': market,
       },
+      agent,
     });
 
     if (!res.ok) {
@@ -292,22 +301,25 @@ async function fetchLatestCharityProducts(charityId, sellerId, maxLimit = 500) {
     const data = await res.json();
     const items = data.itemSummaries || [];
 
-    if (!items.length) {
+    if (items.length === 0) {
       console.log(`ℹ️ No more items found for ${sellerId} (stopped at offset ${offset})`);
       break;
     }
 
     allItems.push(...items);
-    console.log(`📦 Retrieved ${allItems.length} so far...`);
+    console.log(`📦 Retrieved ${allItems.length}/${maxLimit} total so far...`);
 
-    await new Promise(r => setTimeout(r, 2000)); // polite delay
+    // polite delay between eBay API calls
+    await new Promise(r => setTimeout(r, 2000));
 
+    // 🛑 Stop early if reached the target limit
     if (allItems.length >= maxLimit) break;
   }
 
-  console.log(`✅ Fetched ${allItems.length} latest items for ${sellerId}`);
+  console.log(`✅ Finished: ${allItems.length} total fetched for ${sellerId}`);
 
-  return allItems.map((p) => {
+  // 🧩 Clean + normalize products
+  const mapped = allItems.map((p) => {
     const match = p.itemWebUrl?.match(/\/itm\/(\d+)/);
     const itemId = p.itemId || (match ? match[1] : p.title);
     const cleanUrl = match ? `https://www.ebay.co.uk/itm/${match[1]}` : p.itemWebUrl;
@@ -317,9 +329,9 @@ async function fetchLatestCharityProducts(charityId, sellerId, maxLimit = 500) {
       itemId,
       charitySeller: sellerId,
       title: p.title,
-      price: p.price?.value,
-      currency: p.price?.currency,
-      image: p.image?.imageUrl,
+      price: p.price?.value || null,
+      currency: p.price?.currency || 'GBP',
+      image: p.image?.imageUrl || null,
       thumbnailImages: p.thumbnailImages?.map(t => t.imageUrl) || [],
       additionalImages: p.additionalImages?.map(a => a.imageUrl) || [],
       categories: p.categories || [],
@@ -334,6 +346,8 @@ async function fetchLatestCharityProducts(charityId, sellerId, maxLimit = 500) {
       updatedAt: new Date(),
     };
   });
+
+  return mapped;
 }
 
 /* ---------------------------------------------
@@ -346,7 +360,7 @@ async function fetchLatestCharityProducts(charityId, sellerId, maxLimit = 500) {
     console.log(`\n🎯 Processing ${charity.name}`);
 
     try {
-      const products = await fetchLatestCharityProducts(charity.charity_ids, charity.seller, 500);
+      const products = await fetchLatestCharityProducts(charity.charity_ids, charity.seller, 1000);
       console.log(`✅ Fetched ${products.length} latest items for ${charity.name}`);
 
       const uniqueProducts = Array.from(new Map(products.map(p => [p.itemId, p])).values());

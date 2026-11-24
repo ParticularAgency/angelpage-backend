@@ -12,13 +12,11 @@ interface IAddress {
 	postcode: string;
 }
 
-// Interface for Payment Method
+// Interface for Payment Method — billing metadata only (no PAN/CVV)
 interface IPaymentMethod {
 	_id: string;
 	nameAccountHolder: string;
-	accountNumber: string;
-	expiryDate: string;
-	cvvNumber: string;
+	stripePaymentMethodId?: string;
 	billingAddress: {
 		name: string;
 		address: string;
@@ -40,6 +38,7 @@ export interface IAdmin extends Document {
 	addresses: IAddress[];
 	payments: IPaymentMethod[];
 	role: string;
+	permissions?: string[];
 	profileCompleted: boolean;
 	verified: boolean;
 	lastWelcomeBackEmailSent?: Date;
@@ -56,12 +55,10 @@ const addressSchema = new Schema<IAddress>({
 	country: { type: String, required: true },
 	postcode: { type: String, required: true },
 });
-// Payment Method Schema
+// Payment Method Schema — never store card numbers or CVV
 const paymentMethodSchema = new Schema<IPaymentMethod>({
 	nameAccountHolder: { type: String, required: true },
-	accountNumber: { type: String, required: true },
-	expiryDate: { type: String, required: true },
-	cvvNumber: { type: String, required: true },
+	stripePaymentMethodId: { type: String, default: "" },
 	billingAddress: {
 		name: {
 			type: String,
@@ -117,7 +114,12 @@ const adminSchema = new Schema<IAdmin>(
 		verified: { type: Boolean, default: false },
 		addresses: [addressSchema],
 		payments: [paymentMethodSchema],
-		role: { type: String, enum: ["ADMIN"], default: "ADMIN" },
+		role: {
+			type: String,
+			enum: ["ADMIN", "OPS_ADMIN", "CONTENT_ADMIN", "FINANCE_ADMIN"],
+			default: "ADMIN",
+		},
+		permissions: { type: [String], default: [] },
 		lastWelcomeBackEmailSent: Date,
 		verificationCode: { type: String },
 		verificationExpiry: { type: Date },

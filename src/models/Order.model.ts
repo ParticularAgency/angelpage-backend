@@ -12,9 +12,7 @@ interface ShippingAddress {
 
 interface PaymentMethod {
 	nameAccountHolder: string;
-	accountNumber: string;
-	expiryDate: string;
-	cvvNumber: string;
+	stripePaymentMethodId?: string;
 	billingAddress: {
 		name: string;
 		address: string;
@@ -97,7 +95,11 @@ const TrackingEventSchema = new Schema({
 	longitude: { type: Number },
 });
 export interface IOrderDocument extends Document {
-	buyerId: Types.ObjectId;
+	buyerId?: Types.ObjectId;
+	guestEmail?: string;
+	guestName?: string;
+	isGuestOrder?: boolean;
+	guestAccessTokenHash?: string;
 	products: OrderedProduct[];
 	totalAmount: number;
 	grandTotal: number;
@@ -108,6 +110,7 @@ export interface IOrderDocument extends Document {
 	CreateLabelAt: Date;
 	paymentStatus: "Pending" | "Paid" | "Failed";
 	paymentConfirmed: boolean;
+	stripePaymentIntentId?: string;
 	shippingAddress: ShippingAddress;
 	paymentMethod: PaymentMethod;
 	shipStationOrderId?: number;
@@ -138,6 +141,11 @@ export interface IOrderDocument extends Document {
 	insuranceCost?: number;
 	packageInfo?: object;
 	pickupInfo?: object;
+	escrowStatus?: "HELD" | "RELEASED" | "DISPUTED";
+	escrowReleaseAt?: Date | null;
+	disputeStatus?: "NONE" | "OPEN" | "RESOLVED";
+	disputeOpenedAt?: Date | null;
+	disputeNotes?: string;
 	orderStatus:
 		| "OrderPlaced"
 		| "OrderConfirmed"
@@ -210,9 +218,7 @@ const ShippingAddressSchema = new Schema<ShippingAddress>({
 
 const PaymentMethodSchema = new Schema<PaymentMethod>({
 	nameAccountHolder: { type: String, required: true },
-	accountNumber: { type: String, required: true },
-	expiryDate: { type: String, required: true },
-	cvvNumber: { type: String, required: true },
+	stripePaymentMethodId: { type: String, default: "" },
 	billingAddress: {
 		name: {
 			type: String,
@@ -250,7 +256,11 @@ const PaymentMethodSchema = new Schema<PaymentMethod>({
 
 const OrderSchema = new Schema<IOrderDocument>(
 	{
-		buyerId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+		buyerId: { type: Schema.Types.ObjectId, ref: "User", required: false },
+		guestEmail: { type: String },
+		guestName: { type: String },
+		isGuestOrder: { type: Boolean, default: false },
+		guestAccessTokenHash: { type: String, select: false },
 		products: { type: [OrderedProductSchema], required: true },
 		totalAmount: { type: Number, required: true, min: 0 },
 		grandTotal: { type: Number, required: true, min: 0 },
@@ -260,6 +270,7 @@ const OrderSchema = new Schema<IOrderDocument>(
 			default: "Pending",
 		},
 		paymentConfirmed: { type: Boolean, default: false },
+		stripePaymentIntentId: { type: String, index: true },
 		shippingAddress: { type: ShippingAddressSchema, required: true },
 		paymentMethod: { type: PaymentMethodSchema, required: true },
 		paymentConfirmedAt: { type: Date, default: null },
@@ -337,6 +348,19 @@ const OrderSchema = new Schema<IOrderDocument>(
 			default: "OrderPlaced",
 		},
 		tags: { type: [String], default: [] },
+		escrowStatus: {
+			type: String,
+			enum: ["HELD", "RELEASED", "DISPUTED"],
+			default: "HELD",
+		},
+		escrowReleaseAt: { type: Date, default: null },
+		disputeStatus: {
+			type: String,
+			enum: ["NONE", "OPEN", "RESOLVED"],
+			default: "NONE",
+		},
+		disputeOpenedAt: { type: Date, default: null },
+		disputeNotes: { type: String, default: "" },
 	},
 	{ timestamps: true },
 );

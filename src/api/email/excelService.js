@@ -1,4 +1,4 @@
-import XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { google } from "googleapis";
 import fs from "fs/promises";
 import path from "path";
@@ -9,7 +9,10 @@ const CREDENTIALS_PATH = path.join(
 	"../../utils/angelpage-e-commerce-charity-1c959ff317f7.json",
 );
 
-const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID || ""; // Add the Sheet ID to your .env file
+const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID || "";
+const EXCEL_FILE_PATH =
+	process.env.SUBSCRIPTION_EXCEL_PATH ||
+	path.join(__dirname, "../../data/subscriptions.xlsx");
 
 const loadCredentials = async () => {
 	try {
@@ -40,7 +43,7 @@ export const writeSubscriptionToGoogleSheet = async (email) => {
 	try {
 		await sheets.spreadsheets.values.append({
 			spreadsheetId: '1l0x4r7-jwyEE3q9SJRY3y0Rh-PVtRZ8nawWuNwWtGuc',
-			range: "Sheet1!A1", // Ensure your sheet's name matches
+			range: "Sheet1!A1",
 			valueInputOption: "USER_ENTERED",
 			requestBody: {
 				values: [[email, date]],
@@ -56,29 +59,26 @@ export const writeSubscriptionToGoogleSheet = async (email) => {
 
 export const writeSubscriptionToExcel = async (email) => {
 	try {
-		let workbook;
+		const workbook = new ExcelJS.Workbook();
+		let worksheet;
 
-		// Load existing file or create a new workbook
-		if (fs.existsSync(excelFilePath)) {
-			workbook = XLSX.readFile(excelFilePath);
-		} else {
-			workbook = XLSX.utils.book_new();
-			XLSX.utils.book_append_sheet(
-				workbook,
-				XLSX.utils.aoa_to_sheet([["Email", "Subscribed At"]]),
-				"Subscriptions"
-			);
+		try {
+			await fs.access(EXCEL_FILE_PATH);
+			await workbook.xlsx.readFile(EXCEL_FILE_PATH);
+			worksheet = workbook.getWorksheet("Subscriptions");
+		} catch {
+			worksheet = workbook.addWorksheet("Subscriptions");
+			worksheet.addRow(["Email", "Subscribed At"]);
 		}
 
-		const worksheet = workbook.Sheets["Subscriptions"];
-		const data = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
-		const newRow = [email, new Date().toISOString()];
-		data.push(newRow);
+		if (!worksheet) {
+			worksheet = workbook.addWorksheet("Subscriptions");
+			worksheet.addRow(["Email", "Subscribed At"]);
+		}
 
-		const updatedWorksheet = XLSX.utils.aoa_to_sheet(data);
-		workbook.Sheets["Subscriptions"] = updatedWorksheet;
-
-		XLSX.writeFile(workbook, excelFilePath);
+		worksheet.addRow([email, new Date().toISOString()]);
+		await fs.mkdir(path.dirname(EXCEL_FILE_PATH), { recursive: true });
+		await workbook.xlsx.writeFile(EXCEL_FILE_PATH);
 		console.log("Subscription added to Excel:", email);
 	} catch (error) {
 		console.error("Error writing to Excel:", error);

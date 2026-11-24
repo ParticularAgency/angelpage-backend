@@ -1,0 +1,17 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const auth_middleware_1 = require("../../middlewares/auth.middleware");
+const affiliate_controller_js_1 = require("./affiliate.controller.js");
+const router = (0, express_1.Router)();
+router.get("/connections", (0, auth_middleware_1.authMiddleware)(["USER", "CHARITY", "ADMIN"]), affiliate_controller_js_1.listConnections);
+router.post("/connections", (0, auth_middleware_1.authMiddleware)(["USER", "CHARITY", "ADMIN"]), affiliate_controller_js_1.createConnection);
+router.put("/connections/:connectionId", (0, auth_middleware_1.authMiddleware)(["USER", "CHARITY", "ADMIN"]), affiliate_controller_js_1.updateConnection);
+router.delete("/connections/:connectionId", (0, auth_middleware_1.authMiddleware)(["USER", "CHARITY", "ADMIN"]), affiliate_controller_js_1.deleteConnection);
+router.post("/connections/:connectionId/test", (0, auth_middleware_1.authMiddleware)(["USER", "CHARITY", "ADMIN"]), affiliate_controller_js_1.testConnection);
+router.post("/connections/:connectionId/sync", (0, auth_middleware_1.authMiddleware)(["USER", "CHARITY", "ADMIN"]), affiliate_controller_js_1.syncConnection);
+router.get("/products", (0, auth_middleware_1.authMiddleware)(["USER", "CHARITY", "ADMIN"]), affiliate_controller_js_1.getAffiliateProducts);
+router.patch("/products/:productId", (0, auth_middleware_1.authMiddleware)(["USER", "CHARITY", "ADMIN"]), affiliate_controller_js_1.patchAffiliateProduct);
+router.delete("/products/:productId", (0, auth_middleware_1.authMiddleware)(["USER", "CHARITY", "ADMIN"]), affiliate_controller_js_1.deleteAffiliateProduct);
+router.post("/ebay/import", (0, auth_middleware_1.authMiddleware)(["ADMIN"]), affiliate_controller_js_1.importEbayFeedAdmin);
+exports.default = router;

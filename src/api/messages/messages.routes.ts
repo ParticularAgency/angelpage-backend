@@ -8,11 +8,13 @@ import {
 	getUserConversations,
 	getUserDetailsWithRole,
 	fetchUnreadMessagesForRecipient,
+	messageWebhook,
 } from "./messages.controller";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 
 const router = express.Router();
 
+router.post("/hooks", messageWebhook);
 router.post("/conversations/start", authMiddleware(), startConversation);
 router.post("/messages/send", authMiddleware(), sendMessage);
 router.get(
@@ -26,9 +28,9 @@ router.get(
 	fetchRecipientMessages,
 );
 
-router.get("/conversations/:userId", getUserConversations);
-router.get("/unread-messages/:userId", fetchUnreadMessagesForRecipient);
+router.get("/conversations/:userId", authMiddleware(), getUserConversations);
+router.get("/unread-messages/:userId", authMiddleware(), fetchUnreadMessagesForRecipient);
 router.get("/user/:userId/:role", authMiddleware(), getUserDetailsWithRole);
 
-router.post("/messages/mark-as-read", markMessagesAsRead);
+router.post("/messages/mark-as-read", authMiddleware(), markMessagesAsRead);
 export default router;

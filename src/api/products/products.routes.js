@@ -5,6 +5,7 @@ import {
 	createProduct,
 	editProduct,
 	archiveProduct,
+	relistProduct,
 	deleteProduct,
 	getCategoryProducts,
 	getAllProducts,
@@ -15,8 +16,21 @@ import {
 	getListingProducts,
 	getRelatedProducts,
 	getDraftProducts,
-	
+	getPendingReviewProducts,
+	reviewProduct,
+	getEbayAffiliateFeed,
+	bulkCreateProducts,
+	searchSuggest,
+	setProductPromoted,
+	updateProductSocialPosting,
 } from "./products.controller";
+import {
+	createProductReview,
+	getProductReviews,
+	getPendingProductReviews,
+	moderateProductReview,
+	canUserReviewProduct,
+} from "./productReviews.controller";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 
 // Configure multer for file handling
@@ -24,11 +38,20 @@ const upload = multer({ dest: "uploads/" });
 
 const router = Router();
 
+router.post(
+	"/bulk",
+	authMiddleware(),
+	bulkCreateProducts,
+);
+
 // Create a product
 router.post(
 	"/create",
 	authMiddleware(),
-	upload.array("images", 10), // Allow up to 10 images
+	upload.fields([
+		{ name: "images", maxCount: 10 },
+		{ name: "videos", maxCount: 2 },
+	]),
 	createProduct,
 );
 
@@ -36,12 +59,32 @@ router.post(
 
 // List all products
 router.get("/all", getAllProducts);
+router.get("/search-suggest", searchSuggest);
 
 // Public endpoint to fetch category-based products
 router.get("/category", getCategoryProducts);
 
 // Get product details by ID
 router.get("/details/:productId", getProductDetails);
+
+router.get("/:productId/reviews", getProductReviews);
+router.get(
+	"/:productId/reviews/eligibility",
+	authMiddleware(),
+	canUserReviewProduct,
+);
+router.post("/:productId/reviews", authMiddleware(), createProductReview);
+
+router.get(
+	"/admin/reviews/pending",
+	authMiddleware(["ADMIN"]),
+	getPendingProductReviews,
+);
+router.patch(
+	"/admin/reviews/:reviewId",
+	authMiddleware(["ADMIN"]),
+	moderateProductReview,
+);
 
 // Fetch products by category
 router.get("/category/:category", getProductsByCategory);
@@ -64,8 +107,17 @@ router.get("/mylistings", authMiddleware(), getListingProducts);
 // Edit a product by ID
 router.put("/:productId", authMiddleware(), editProduct);
 
+router.patch(
+	"/:productId/social-posting",
+	authMiddleware(),
+	updateProductSocialPosting,
+);
+
 // Archive (soft delete) a product by ID
 router.patch("/:productId/archive", authMiddleware(), archiveProduct);
+
+// Re-list an archived product
+router.patch("/:productId/relist", authMiddleware(), relistProduct);
 
 // Archive (draft product) a product by ID
 router.patch("/:productId/draft", authMiddleware(), getDraftProducts);
@@ -81,5 +133,14 @@ router.delete("/:productId", authMiddleware(), deleteProduct);
 router.get("/all-charity-products", getCharityProducts);
 router.get("/charity/:charityName", getProductsByCharity);
 router.get("/charities", getAvailableCharities);
+
+router.get("/admin/pending-review", authMiddleware(["ADMIN"]), getPendingReviewProducts);
+router.patch("/:productId/review", authMiddleware(["ADMIN"]), reviewProduct);
+router.patch(
+	"/:productId/promoted",
+	authMiddleware(["ADMIN"]),
+	setProductPromoted,
+);
+router.get("/ebay-affiliate/feed", authMiddleware(["ADMIN"]), getEbayAffiliateFeed);
 
 export default router;

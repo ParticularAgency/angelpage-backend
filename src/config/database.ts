@@ -6,9 +6,9 @@ dotenv.config();
 
 const connectDB = async () => {
 	try {
-		const mongoURI = process.env.MONGO_URI; // Get the MongoDB URI from environment variables
+		const mongoURI = process.env.MONGO_URI || process.env.MONGODB_URI;
 		if (!mongoURI) {
-			throw new Error("MongoDB URI is not defined in .env");
+			throw new Error("MONGO_URI is not defined in .env");
 		}
 
 		// Connect to MongoDB without deprecated options

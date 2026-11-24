@@ -1,13 +1,17 @@
 import { Request, Response, NextFunction } from "express";
 import jwt, { JwtPayload } from "jsonwebtoken";
+import { isAdminRole } from "../constants/adminRoles.js";
+import { JWT_SECRET } from "../config/jwtSecret.js";
 
-const JWT_SECRET = process.env.JWT_SECRET || "your_jwt_secret";
+export interface AuthUser {
+	userId: string;
+	role: string;
+	charityId?: string;
+	permissions?: string[];
+}
 
-interface CustomRequest extends Request {
-	user?: {
-		userId: string;
-		role: string;
-	};
+export interface CustomRequest extends Request {
+	user?: AuthUser;
 }
 
 export const authMiddleware = (roles?: string[]) => {
@@ -22,20 +26,39 @@ export const authMiddleware = (roles?: string[]) => {
 		const token = authHeader.replace("Bearer ", "");
 
 		try {
-			// Verify token and check expiration
 			const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload & {
 				userId: string;
 				role: string;
+				charityId?: string;
+				permissions?: string[];
+				type?: string;
 			};
 
-			req.user = { userId: decoded.userId, role: decoded.role, };
-
-			// Role-based access check
-			if (roles && !roles.includes(decoded.role)) {
-				res
-					.status(403)
-					.json({ message: "Access denied: insufficient permissions." });
+			if (decoded.type === "refresh") {
+				res.status(401).json({ message: "Access token required." });
 				return;
+			}
+
+			req.user = {
+				userId: decoded.userId,
+				role: decoded.role,
+				charityId: decoded.charityId,
+				permissions: decoded.permissions || [],
+			};
+
+			if (roles) {
+				const userRole = decoded.role;
+				const allowed = roles.some(r => {
+					if (r === "ADMIN" && isAdminRole(userRole)) return true;
+					if (r === "CHARITY" && userRole === "CHARITY_STAFF") return true;
+					return r === userRole;
+				});
+				if (!allowed) {
+					res
+						.status(403)
+						.json({ message: "Access denied: insufficient permissions." });
+					return;
+				}
 			}
 
 			next();

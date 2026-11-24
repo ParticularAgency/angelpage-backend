@@ -1,6 +1,5 @@
 
 import multer from "multer";
-import xlsx from "xlsx";
 import moment from 'moment';
 import cloudinary from "../../config/cloudinary";
 import Charity from "../../models/Charity.model";
@@ -9,6 +8,11 @@ import bcrypt from "bcryptjs";
 import {sendEmail} from "../../utils/email";
 import Stripe from 'stripe';
 import { v4 as uuidv4 } from 'uuid';
+import { parseSpreadsheetBuffer } from "../../utils/excel.js";
+import {
+	rejectsCardSecrets,
+	sanitizePaymentMethodInput,
+} from "../../utils/sanitizePayment.js";
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2020-08-27' });
 // Set up Multer for file uploads
 const upload = multer({
@@ -243,12 +247,20 @@ export const deleteAddress = async (req, res) => {
 export const addPayment = async (req, res) => {
 	try {
 		const { userId } = req.user;
-		const newPayment = req.body; // Assumes payment data is in the request body
+		if (rejectsCardSecrets(req.body)) {
+			return res.status(400).json({
+				message:
+					"Card numbers and CVV must not be sent. Use Stripe Elements for card payments.",
+			});
+		}
+		const newPayment = sanitizePaymentMethodInput(req.body);
+		if (!newPayment.nameAccountHolder) {
+			return res.status(400).json({ message: "nameAccountHolder is required" });
+		}
 
 		const user = await Charity.findById(userId);
 		if (!user) return res.status(404).json({ message: "User not found" });
 
-		// Add the new payment to the user's payments array
 		user.payments.push(newPayment);
 		await user.save();
 
@@ -266,7 +278,13 @@ export const updatePayment = async (req, res) => {
 	try {
 		const { userId } = req.user;
 		const { paymentId } = req.params;
-		const updatedPayment = req.body;
+		if (rejectsCardSecrets(req.body)) {
+			return res.status(400).json({
+				message:
+					"Card numbers and CVV must not be sent. Use Stripe Elements for card payments.",
+			});
+		}
+		const updatedPayment = sanitizePaymentMethodInput(req.body);
 
 		const user = await Charity.findById(userId);
 		if (!user) return res.status(404).json({ message: "User not found" });
@@ -275,7 +293,6 @@ export const updatePayment = async (req, res) => {
 		if (!payment)
 			return res.status(404).json({ message: "Payment method not found" });
 
-		// Update the payment details
 		Object.assign(payment, updatedPayment);
 		await user.save();
 
@@ -422,10 +439,8 @@ export const uploadCharityList = async (req, res) => {
 			return res.status(400).json({ message: "No file uploaded." });
 		}
 
-		// Parse the uploaded file using xlsx
-		const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
-		const sheetName = workbook.SheetNames[0]; // Get the first sheet
-		const sheetData = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName]);
+		// Parse the uploaded spreadsheet (Excel)
+		const sheetData = await parseSpreadsheetBuffer(req.file.buffer);
 
 		if (!sheetData || sheetData.length === 0) {
 			return res.status(400).json({ message: "Excel file is empty or invalid." });
@@ -518,13 +533,17 @@ export const registerCharity = async (req, res) => {
 // Endpoint to mark the order as delivered
 export const OrderdeliverMark = async (req, res) => {
 	const { orderId } = req.params;
+	const userId = req.user?.userId;
 
 	try {
-		// Find the order by ID
 		const order = await Order.findById(orderId);
 
 		if (!order) {
 			return res.status(404).json({ message: "Order not found" });
+		}
+
+		if (order.buyerId?.toString() !== userId) {
+			return res.status(403).json({ message: "Not authorized to confirm delivery." });
 		}
 
 		// Update the order status to "delivered"
@@ -765,6 +784,7 @@ export const approveFundsRelease = async (req, res) => {
 			description: `Payout for charity ${charity.name}`,
 		});
 
+		const releasedAmount = charity.totalHeldFunds;
 		// Reset the totalHeldFunds after the release
 		charity.totalHeldFunds = 0;
 
@@ -778,7 +798,15 @@ export const approveFundsRelease = async (req, res) => {
 			text: `Dear ${charity.name}, your funds have been released to your Stripe account.`,
 		});
 		console.log(`Released funds for charity ${charity.name}`);
-		// Send success response
+		const { logAudit } = await import("../../utils/auditLog.js");
+		await logAudit({
+			actorId: req.user?.userId,
+			actorRole: req.user?.role || "ADMIN",
+			action: "CHARITY_PAYOUT_APPROVED",
+			entityType: "charity",
+			entityId: charityId,
+			details: { amount: releasedAmount },
+		});
 		res.status(200).json({ message: "Funds released and charity confirmed" });
 	} catch (error) {
 		console.error("Error approving funds release:", error);
@@ -854,7 +882,21 @@ setInterval(automaticReleaseAfter14Days, 1000 * 3600 * 24); // Runs daily
 // POST: /api/stripe/onboard
 export const onBoarding = async (req, res) => {
 	const { charityId } = req.body;
-	const redirectUri = 'http://localhost:3000/';
+	const requesterId = req.user?.userId;
+	const role = req.user?.role;
+
+	if (!charityId) {
+		return res.status(400).json({ error: "charityId is required" });
+	}
+
+	const allowedCharityId =
+		role === "CHARITY_STAFF" ? req.user?.charityId : requesterId;
+	if (allowedCharityId?.toString() !== charityId?.toString()) {
+		return res.status(403).json({ error: "Not authorized for this charity." });
+	}
+
+	const redirectUri =
+		process.env.FRONTEND_BASE_URL || "http://localhost:3000";
 	try {
 		// Find the charity in the database
 		const charity = await Charity.findById(charityId);

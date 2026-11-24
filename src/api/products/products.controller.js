@@ -1,8 +1,45 @@
 // import { Request, Response } from "express";
 import Product from "../../models/Product.model";
+import { resolveCharityId, isCharityAccountRole } from "../../utils/charityAccess.js";
 import User from "../../models/User.model";
 import Charity from "../../models/Charity.model";
+import { parseSocialPostingInput } from "../../services/socialPosting.service.js";
+import { queueAutoPostNewListing } from "../../api/social/socialPosts.controller.js";
+import { getReviewSummaryForProduct, isAdminUser } from "./productReviews.controller.js";
+import {
+	fireMarketingEvent,
+	JOURNEY_EVENTS,
+} from "../../services/marketingJourneys.service.js";
+import { notifyCharityNewListing } from "../../utils/notifyCharity";
 import cloudinary from "../../config/cloudinary";
+import {
+	buildUniqueProductSlug,
+	resolveProductLookup,
+} from "../../utils/productSlug.js";
+import { calculateProfitSplit } from "../../utils/profitSplit.js";
+
+const parseSellAreas = (raw) => {
+	if (!raw) return [];
+	if (Array.isArray(raw)) return raw.map(String).filter(Boolean);
+	if (typeof raw === "string") {
+		try {
+			const parsed = JSON.parse(raw);
+			if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+		} catch {
+			/* comma-separated */
+		}
+		return raw
+			.split(",")
+			.map((s) => s.trim())
+			.filter(Boolean);
+	}
+	return [];
+};
+
+const parseFulfillmentType = (value) => {
+	const allowed = ["uk_shipping", "personal_delivery", "self_collect", "local_only"];
+	return allowed.includes(value) ? value : "uk_shipping";
+};
 
 // Create a new product
 export const createProduct = async (req, res) => {
@@ -24,6 +61,11 @@ export const createProduct = async (req, res) => {
 		selectedCharityName,
 		selectedCharityId,
 		status,
+		quantity,
+		socialPosting,
+		sellerSharePercent,
+		fulfillmentType,
+		sellAreas,
 	} = req.body;
 
 	const { userId, role } = req.user;
@@ -55,15 +97,30 @@ export const createProduct = async (req, res) => {
 				});
 			}
 		}
-		// Handle file uploads if provided
+		// Handle file uploads (images + optional videos)
 		const images = [];
-		if (req.files && Array.isArray(req.files)) {
-			for (const file of req.files) {
-				const result = await cloudinary.uploader.upload(file.path, {
-					folder: "products",
-				});
-				images.push({ url: result.secure_url, altText: name || "" });
-			}
+		const videos = [];
+		const imageFiles = req.files?.images
+			? (Array.isArray(req.files.images) ? req.files.images : [req.files.images])
+			: Array.isArray(req.files)
+				? req.files
+				: [];
+		const videoFiles = req.files?.videos
+			? (Array.isArray(req.files.videos) ? req.files.videos : [req.files.videos])
+			: [];
+
+		for (const file of imageFiles) {
+			const result = await cloudinary.uploader.upload(file.path, {
+				folder: "products",
+			});
+			images.push({ url: result.secure_url, altText: name || "" });
+		}
+		for (const file of videoFiles) {
+			const result = await cloudinary.uploader.upload(file.path, {
+				folder: "products/videos",
+				resource_type: "video",
+			});
+			videos.push({ url: result.secure_url, altText: name || "" });
 		}
 
 		// Determine the charity association based on the role
@@ -79,11 +136,52 @@ export const createProduct = async (req, res) => {
 			charityId = userId;
 		}
 
+		const parsedQuantity = Math.max(1, parseInt(quantity, 10) || 1);
+
+		const requestedStatus = status || "DRAFT";
+		let finalStatus = requestedStatus;
+		if (requestedStatus === "LIVE") {
+			finalStatus = "PENDING_REVIEW";
+		}
+
+		const slug = await buildUniqueProductSlug(name);
+
+		const numericPrice = parseFloat(price);
+		const sharePct = Math.min(
+			100,
+			Math.max(0, parseFloat(sellerSharePercent) || 0),
+		);
+		const split = calculateProfitSplit(numericPrice, sharePct);
+		const resolvedFulfillment = parseFulfillmentType(fulfillmentType);
+		const resolvedAreas = parseSellAreas(sellAreas);
+
+		if (resolvedFulfillment === "local_only" && resolvedAreas.length === 0) {
+			return res.status(400).json({
+				message: "Add at least one area for local-only listings.",
+			});
+		}
+
+		if (
+			resolvedFulfillment === "uk_shipping" &&
+			finalStatus !== "DRAFT" &&
+			(!weight || !parsedDimensions?.height || !parsedDimensions?.width)
+		) {
+			return res.status(400).json({
+				message:
+					"Weight and package dimensions are required for UK shipping listings.",
+			});
+		}
+
 		// Create a new product
 		const newProduct = new Product({
 			name,
+			slug,
 			price,
-			charityProfit,
+			charityProfit: split.charityProfit,
+			sellerSharePercent: sharePct,
+			sellerProfit: split.sellerProfit,
+			fulfillmentType: resolvedFulfillment,
+			sellAreas: resolvedAreas,
 			category,
 			charity: charityId,
 			additionalInfo,
@@ -98,10 +196,13 @@ export const createProduct = async (req, res) => {
 			selectedCharityName,
 			selectedCharityId,
 			seller: userId,
-			// sellerType: role,
 			images,
-			status: status || "DRAFT",
+			videos,
+			quantity: parsedQuantity,
+			stockRemaining: parsedQuantity,
+			status: finalStatus,
 			isArchived: false,
+			socialPosting: parseSocialPostingInput(socialPosting),
 		});
 
 		const savedProduct = await newProduct.save();
@@ -119,8 +220,29 @@ export const createProduct = async (req, res) => {
 			});
 		}
 
+		if (selectedCharityId && finalStatus === "LIVE") {
+			const sellerProfile =
+				role === "USER"
+					? await User.findById(userId).select("firstName lastName")
+					: await Charity.findById(userId).select("charityName firstName");
+			const sellerName =
+				role === "CHARITY"
+					? sellerProfile?.charityName
+					: `${sellerProfile?.firstName || ""} ${sellerProfile?.lastName || ""}`.trim();
+
+			await notifyCharityNewListing({
+				charityId: selectedCharityId,
+				productId: savedProduct._id,
+				productName: name,
+				sellerName,
+			});
+		}
+
 		return res.status(201).json({
-			message: "Product created successfully",
+			message:
+				finalStatus === "PENDING_REVIEW"
+					? "Product submitted for admin review. It will go live once approved."
+					: "Product created successfully",
 			product: savedProduct,
 		});
 	} catch (error) {
@@ -133,12 +255,15 @@ export const createProduct = async (req, res) => {
 
 // Fetch all products (public access)
 export const getAllProducts = async (req, res) => {
-	const { isArchived , status} = req.query;
+	const { isArchived , status, promoted} = req.query;
 
 	try {
 		const query = {
-			...(status && { status }),
+			...(status ? { status } : { status: "LIVE" }),
 		};
+		if (promoted === "true") {
+			query.isPromoted = true;
+		}
 		if (isArchived !== undefined) {
 			query.isArchived = isArchived === "true"; // Handle archived filter
 		} else {
@@ -151,7 +276,7 @@ export const getAllProducts = async (req, res) => {
 			.sort({ createdAt: -1 }); 
 
 		if (!products || products.length === 0) {
-			return res.status(404).json({ message: "No products found." });
+			return res.status(200).json({ products: [] });
 		}
 		const productsWithAddress = products.map(product => ({
 			...product.toObject(),
@@ -227,8 +352,12 @@ export const getCategoryProducts = async (req, res) => {
 		const query = {
 			...(status && { status }),
 		}; // Initialize query object
-		if (category) query.category = category; // Add category to the query if provided
-		if (subcategory) query.subcategory = subcategory; // Add subcategory to the query if provided
+		const exact = value => ({
+			$regex: `^${String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+			$options: "i",
+		});
+		if (category) query.category = exact(category);
+		if (subcategory) query.subcategory = exact(subcategory);
 		if (isArchived !== undefined) {
 			query.isArchived = isArchived === "true"; // Handle archived filter
 		} else {
@@ -241,9 +370,7 @@ export const getCategoryProducts = async (req, res) => {
 			.sort({ createdAt: -1 }); // Sort by creation date (newest first)
 
 		if (!products || products.length === 0) {
-			return res
-				.status(404)
-				.json({ message: "No products found for the selected category." });
+			return res.status(200).json({ products: [] });
 		}
 		const productsWithAddress = products.map(product => ({
 			...product.toObject(),
@@ -348,8 +475,7 @@ export const getProductDetails = async (req, res) => {
 	const { productId } = req.params;
 
 	try {
-		// Fetch product details by ID, including populated fields for seller and charity
-		const product = await Product.findById(productId)
+		const product = await Product.findOne(resolveProductLookup(productId))
 			.populate("seller", "_id firstName lastName charityName email profileImage  addresses")
 			.populate("charity", "charityName email charityID storefrontId profileImage  addresses");
 
@@ -357,6 +483,7 @@ export const getProductDetails = async (req, res) => {
 			return res.status(404).json({ message: "Product not found." });
 		}
 
+		const resolvedId = product._id.toString();
 
 		// Determine the seller type
 		let sellerType = null;
@@ -368,15 +495,37 @@ export const getProductDetails = async (req, res) => {
 		}
 
 		// Return product details with charity and seller info
+		const reviewSummary = await getReviewSummaryForProduct(resolvedId);
+
 		return res.status(200).json({
 			product: {
 				id: product._id,
+				slug: product.slug,
 				name: product.name,
 				additionalInfo: product.additionalInfo,
 				price: product.price,
 				charityProfit: product.charityProfit,
+				sellerSharePercent: product.sellerSharePercent ?? 0,
+				sellerProfit: product.sellerProfit ?? 0,
+				fulfillmentType: product.fulfillmentType || "uk_shipping",
+				sellAreas: product.sellAreas || [],
 				description: product.additionalInfo,
 				images: product.images,
+				videos: product.videos || [],
+				checkoutMode: product.checkoutMode || "stripe",
+				ebayItemId: product.ebayItemId,
+				ebayAffiliateUrl:
+					product.ebayAffiliateUrl ||
+					(product.ebayItemId
+						? `https://www.ebay.co.uk/itm/${product.ebayItemId}${
+								process.env.EBAY_CAMPAIGN_ID
+									? `?campid=${process.env.EBAY_CAMPAIGN_ID}&customid=angelpage`
+									: ""
+							}`
+						: null),
+				isPromoted: product.isPromoted || false,
+				socialPosting: product.socialPosting,
+				reviewSummary,
 				category: product.category,
 				subcategory: product.subcategory,
 				condition: product.condition,
@@ -385,6 +534,7 @@ export const getProductDetails = async (req, res) => {
 				color: product.color,
 				size: product.size,
 				status: product.status,
+				weight: product.weight,
 				dimensions: {
 					height: product.dimensions?.height || null,
 					width: product.dimensions?.width || null,
@@ -488,7 +638,35 @@ export const editProduct = async (req, res) => {
 			return res.status(400).json({ message: "Cannot edit archived products" });
 		}
 
-		Object.assign(product, req.body);
+		const { socialPosting, sellerSharePercent, fulfillmentType, sellAreas, ...rest } =
+			req.body;
+		Object.assign(product, rest);
+		if (sellerSharePercent !== undefined) {
+			product.sellerSharePercent = Math.min(
+				100,
+				Math.max(0, parseFloat(sellerSharePercent) || 0),
+			);
+		}
+		if (fulfillmentType !== undefined) {
+			product.fulfillmentType = parseFulfillmentType(fulfillmentType);
+		}
+		if (sellAreas !== undefined) {
+			product.sellAreas = parseSellAreas(sellAreas);
+		}
+		if (product.price != null) {
+			const split = calculateProfitSplit(
+				product.price,
+				product.sellerSharePercent ?? 0,
+			);
+			product.charityProfit = split.charityProfit;
+			product.sellerProfit = split.sellerProfit;
+		}
+		if (rest.name && rest.name !== product.name) {
+			product.slug = await buildUniqueProductSlug(rest.name, product._id);
+		}
+		if (socialPosting !== undefined) {
+			product.socialPosting = parseSocialPostingInput(socialPosting);
+		}
 		await product.save();
 
 		res.status(200).json({ message: "Product updated successfully", product });
@@ -529,6 +707,44 @@ export const archiveProduct = async (req, res) => {
 	} catch (error) {
 		console.error("Error archiving product:", error);
 		res.status(500).json({ message: "Failed to archive product" });
+	}
+};
+
+// Re-list an archived or sold product
+export const relistProduct = async (req, res) => {
+	try {
+		const { productId } = req.params;
+		const userId = req.user?.userId;
+		const isCharity = req.user?.role === "CHARITY";
+		const { quantity } = req.body;
+
+		const product = await Product.findById(productId);
+		if (!product) {
+			return res.status(404).json({ message: "Product not found" });
+		}
+
+		const isOwner = isCharity
+			? product.charity?.toString() === userId
+			: product.seller?.toString() === userId;
+
+		if (!isOwner) {
+			return res.status(403).json({ message: "Unauthorized to re-list this product" });
+		}
+
+		const parsedQuantity = Math.max(1, parseInt(quantity, 10) || product.quantity || 1);
+		product.isArchived = false;
+		product.status = "PENDING_REVIEW";
+		product.quantity = parsedQuantity;
+		product.stockRemaining = parsedQuantity;
+		await product.save();
+
+		res.status(200).json({
+			message: "Product submitted for admin review before going live",
+			product,
+		});
+	} catch (error) {
+		console.error("Error re-listing product:", error);
+		res.status(500).json({ message: "Failed to re-list product" });
 	}
 };
 
@@ -592,8 +808,9 @@ export const getRoleBasedListings = async (req, res) => {
 
 		if (role === "USER") {
 			query.seller = userId;
-		} else if (role === "CHARITY") {
-			query.$or = [{ charity: userId }, { seller: userId }];
+		} else if (isCharityAccountRole(role)) {
+			const charityId = resolveCharityId(req.user);
+			query.$or = [{ charity: charityId }, { seller: charityId }];
 		} else {
 			return res.status(403).json({ message: "Access denied. Invalid role." });
 		}
@@ -626,6 +843,8 @@ export const getRoleBasedListings = async (req, res) => {
 			color: product.color,
 			size: product.size,
 			status: product.status,
+			socialPosting: product.socialPosting,
+			videos: product.videos,
 			dimensions: {
 				height: product.dimensions?.height || null,
 				width: product.dimensions?.width || null,
@@ -651,4 +870,272 @@ export const getRoleBasedListings = async (req, res) => {
 		console.error("Error fetching listings:", error);
 		res.status(500).json({ message: "Failed to fetch listings." });
 	}
+};
+
+export const getPendingReviewProducts = async (req, res) => {
+	try {
+		const products = await Product.find({ status: "PENDING_REVIEW", isArchived: false })
+			.populate("seller", "firstName lastName email profileImage")
+			.populate("charity", "charityName email profileImage")
+			.sort({ createdAt: -1 });
+
+		return res.status(200).json({ products });
+	} catch (error) {
+		console.error("Error fetching pending products:", error);
+		return res.status(500).json({ message: "Failed to fetch pending products." });
+	}
+};
+
+export const reviewProduct = async (req, res) => {
+	try {
+		const { productId } = req.params;
+		const { action, reason, socialPosting } = req.body;
+
+		if (!["approve", "reject"].includes(action)) {
+			return res.status(400).json({ message: "Action must be approve or reject." });
+		}
+
+		const product = await Product.findById(productId);
+		if (!product) {
+			return res.status(404).json({ message: "Product not found." });
+		}
+
+		if (product.status !== "PENDING_REVIEW") {
+			return res.status(400).json({ message: "Product is not pending review." });
+		}
+
+		if (action === "approve") {
+			if (socialPosting !== undefined) {
+				product.socialPosting = parseSocialPostingInput(socialPosting);
+			}
+			product.status = "LIVE";
+			await product.save();
+
+			if (product.selectedCharityId) {
+				const sellerProfile = product.seller
+					? await User.findById(product.seller).select("firstName lastName")
+					: await Charity.findById(product.charity).select("charityName");
+				const sellerName = sellerProfile?.charityName
+					? sellerProfile.charityName
+					: `${sellerProfile?.firstName || ""} ${sellerProfile?.lastName || ""}`.trim();
+
+				await notifyCharityNewListing({
+					charityId: product.selectedCharityId,
+					productId: product._id,
+					productName: product.name,
+					sellerName,
+				});
+			}
+
+			queueAutoPostNewListing(product).catch((err) =>
+				console.error("Social auto-post queue failed:", err),
+			);
+
+			if (product.seller) {
+				const seller = await User.findById(product.seller).select("email firstName");
+				if (seller?.email) {
+					fireMarketingEvent(JOURNEY_EVENTS.PRODUCT_APPROVED, {
+						email: seller.email,
+						productId: product._id.toString(),
+						productName: product.name,
+						firstName: seller.firstName,
+					});
+				}
+			}
+
+			return res.status(200).json({ message: "Product approved and is now live.", product });
+		}
+
+		product.status = "DRAFT";
+		if (reason) {
+			product.additionalInfo = `${product.additionalInfo || ""}\n\n[Admin rejection]: ${reason}`.trim();
+		}
+		await product.save();
+
+		return res.status(200).json({ message: "Product rejected and returned to draft.", product });
+	} catch (error) {
+		console.error("Error reviewing product:", error);
+		return res.status(500).json({ message: "Failed to review product." });
+	}
+};
+
+export const updateProductSocialPosting = async (req, res) => {
+	try {
+		const { productId } = req.params;
+		const userId = req.user?.userId;
+		const isCharity = req.user?.role === "CHARITY";
+
+		const product = await Product.findById(productId);
+		if (!product) {
+			return res.status(404).json({ message: "Product not found" });
+		}
+
+		const isOwner = isCharity
+			? product.charity?.toString() === userId
+			: product.seller?.toString() === userId;
+
+		const isAdmin = isAdminUser(req.user?.role);
+
+		if (!isOwner && !isAdmin) {
+			return res.status(403).json({ message: "Unauthorized to update this product" });
+		}
+
+		product.socialPosting = parseSocialPostingInput(req.body);
+		await product.save();
+
+		return res.status(200).json({
+			message: "Social posting preferences updated",
+			socialPosting: product.socialPosting,
+			product,
+		});
+	} catch (error) {
+		console.error("Error updating social posting preferences:", error);
+		return res.status(500).json({ message: "Failed to update social posting preferences." });
+	}
+};
+
+export const searchSuggest = async (req, res) => {
+	try {
+		const { q = "", limit = 8 } = req.query;
+		if (!q || String(q).trim().length < 2) {
+			return res.status(200).json({ suggestions: [] });
+		}
+		const regex = new RegExp(String(q).trim(), "i");
+		const products = await Product.find({
+			status: "LIVE",
+			isArchived: false,
+			$or: [{ name: regex }, { brand: regex }, { category: regex }],
+		})
+			.select("name brand category price images slug")
+			.limit(Number(limit));
+		res.status(200).json({ suggestions: products });
+	} catch (error) {
+		res.status(500).json({ message: "Search suggest failed." });
+	}
+};
+
+export const setProductPromoted = async (req, res) => {
+	try {
+		const { productId } = req.params;
+		const { isPromoted } = req.body;
+		if (typeof isPromoted !== "boolean") {
+			return res.status(400).json({ message: "isPromoted boolean required." });
+		}
+		const product = await Product.findByIdAndUpdate(
+			productId,
+			{ isPromoted },
+			{ new: true },
+		);
+		if (!product) return res.status(404).json({ message: "Product not found." });
+		res.status(200).json({ message: "Promoted status updated.", product });
+	} catch (error) {
+		res.status(500).json({ message: "Failed to update promoted status." });
+	}
+};
+
+export const getEbayAffiliateFeed = async (req, res) => {
+	try {
+		const { fetchEbayCuratedFeed } = await import("../../services/ebayAffiliate.service.js");
+		const { limit, offset } = req.query;
+		const items = await fetchEbayCuratedFeed({
+			limit: parseInt(limit, 10) || 50,
+			offset: parseInt(offset, 10) || 0,
+		});
+		return res.status(200).json({ items });
+	} catch (error) {
+		console.error("eBay affiliate feed error:", error);
+		return res.status(500).json({ message: error.message || "Failed to fetch eBay affiliate feed." });
+	}
+};
+
+export const bulkCreateProducts = async (req, res) => {
+	const { products: items, status: requestedBulkStatus = "PENDING_REVIEW" } = req.body;
+	const { userId, role } = req.user;
+
+	if (!Array.isArray(items) || items.length === 0) {
+		return res.status(400).json({ message: "A products array is required." });
+	}
+	if (items.length > 50) {
+		return res.status(400).json({ message: "Maximum 50 products per bulk upload." });
+	}
+
+	const { CHARITY_SHARE_RATE } = await import("../../constants/platformPolicy.js");
+	const created = [];
+	const failed = [];
+
+	let charityId = null;
+	if (role === "CHARITY") {
+		charityId = userId;
+	}
+
+	for (let i = 0; i < items.length; i++) {
+		const item = items[i];
+		try {
+			const { name, price, category, charity, subcategory, condition, brand, quantity } = item;
+
+			if (!name || price == null || !category) {
+				throw new Error("name, price, and category are required");
+			}
+
+			const numericPrice = parseFloat(price);
+			if (Number.isNaN(numericPrice) || numericPrice < 1) {
+				throw new Error("price must be at least 1");
+			}
+
+			const parsedQuantity = Math.max(1, parseInt(quantity, 10) || 1);
+			let itemCharityId = charityId;
+			if (role === "USER") {
+				if (!charity && requestedBulkStatus !== "DRAFT") {
+					throw new Error("charity is required for USER listings");
+				}
+				itemCharityId = charity || null;
+			}
+
+			let finalStatus = requestedBulkStatus;
+			if (finalStatus === "LIVE") {
+				finalStatus = "PENDING_REVIEW";
+			}
+
+			const charityProfit =
+				item.charityProfit != null
+					? parseFloat(item.charityProfit)
+					: numericPrice * CHARITY_SHARE_RATE;
+
+			const product = new Product({
+				name,
+				slug: await buildUniqueProductSlug(name),
+				price: numericPrice,
+				charityProfit,
+				category,
+				subcategory: subcategory || "",
+				condition: condition || "",
+				brand: brand || "",
+				charity: itemCharityId,
+				seller: userId,
+				quantity: parsedQuantity,
+				stockRemaining: parsedQuantity,
+				status: finalStatus,
+				isArchived: false,
+				images: [],
+				additionalInfo: item.additionalInfo || "",
+			});
+
+			const saved = await product.save();
+			const model = role === "USER" ? User : Charity;
+			await model.findByIdAndUpdate(userId, {
+				$push: { listedProducts: saved._id },
+			});
+			created.push(saved);
+		} catch (err) {
+			failed.push({ row: i + 1, name: item?.name, error: err.message });
+		}
+	}
+
+	return res.status(201).json({
+		message: `${created.length} product(s) submitted. ${failed.length} failed.`,
+		createdCount: created.length,
+		failedCount: failed.length,
+		created,
+		failed,
+	});
 };

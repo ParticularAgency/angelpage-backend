@@ -2,6 +2,10 @@ import { Request, Response } from "express";
 import cloudinary from "../../config/cloudinary";
 import User from "../../models/User.model";
 import bcrypt from "bcryptjs";
+import {
+	rejectsCardSecrets,
+	sanitizePaymentMethodInput,
+} from "../../utils/sanitizePayment.js";
 
 interface CustomRequest extends Request {
 	user?: {
@@ -228,22 +232,33 @@ export const deleteAddress = async (
 	}
 };
 
-// Add Payment Method
+// Add Payment Method (billing metadata only — cards via Stripe)
 export const addPayment = async (
 	req: CustomRequest,
 	res: Response,
 ): Promise<void> => {
 	try {
 		const userId = req.user?.userId;
-		const newPayment = req.body;
-        
+		if (rejectsCardSecrets(req.body)) {
+			res.status(400).json({
+				message:
+					"Card numbers and CVV must not be sent. Use Stripe Elements for card payments.",
+			});
+			return;
+		}
+		const newPayment = sanitizePaymentMethodInput(req.body);
+		if (!newPayment.nameAccountHolder) {
+			res.status(400).json({ message: "nameAccountHolder is required" });
+			return;
+		}
+
 		const user = await User.findById(userId);
 		if (!user) {
 			res.status(404).json({ message: "User not found" });
 			return;
 		}
 
-		user.payments.push(newPayment);
+		user.payments.push(newPayment as never);
 		await user.save();
 
 		res.status(201).json({
@@ -267,7 +282,14 @@ export const updatePayment = async (
 	try {
 		const userId = req.user?.userId;
 		const { paymentId } = req.params;
-		const updatedPayment = req.body;
+		if (rejectsCardSecrets(req.body)) {
+			res.status(400).json({
+				message:
+					"Card numbers and CVV must not be sent. Use Stripe Elements for card payments.",
+			});
+			return;
+		}
+		const updatedPayment = sanitizePaymentMethodInput(req.body);
 
 		const user = await User.findById(userId);
 		if (!user) {
